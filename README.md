@@ -8,16 +8,12 @@ This tool allows anyone to:
 - Verify whether a file or folder belongs to a given Merkle commitment
 - Do all hashing **locally in the browser**
 
-No servers. No uploads. No tracking.
-
 ## Why this exists
 
 When you want to prove that:
-- a file existed at a certain moment
-- a file belonged to a specific collection
-- two people have identical data without sharing it
-
-you need a **deterministic, reproducible commitment**.
+- a file belonged to a specific collection represented by a merkle-root hash (sha256) and/or (`merkle-tree.json`) file.
+- a merkle-root and/or (`merkle-tree.json`) file corresponds to a given data set.
+- two people have identical data sets without sharing them
 
 This tool creates Merkle roots using SHA-256 and allows independent verification anywhere, on any device.
 
@@ -46,7 +42,7 @@ This tool creates Merkle roots using SHA-256 and allows independent verification
 
 ### File verification
 Given:
-- a file
+- a file or folder
 - a `merkle-tree.json`
 
 The tool checks whether the file’s content hash is included in the committed Merkle tree.
