@@ -1,88 +1,84 @@
 # Merkle Tool
 
-**Local-only Merkle root generator and verification tool for folders and files.**  
-All hashing happens in your browser. No uploads. No servers.
+Local, deterministic Merkle commitments for files and folders — without uploading data.
 
 This tool allows anyone to:
-- Generate a Merkle root for a folder or file set
+- Generate a cryptographic Merkle root from a folder or file set
 - Export a portable JSON proof (`merkle-tree.json`)
-- Verify whether a folder or an individual file belongs to that Merkle commitment
-- Verify file inclusion **by bytes only** (file names and paths do not matter)
+- Verify whether a file or folder belongs to a given Merkle commitment
+- Do all hashing **locally in the browser**
 
-## Key Principles
+No servers. No uploads. No tracking.
 
-- **Local-first**: Files never leave your device
-- **Deterministic**: Same bytes → same Merkle root, anywhere
-- **Portable proofs**: JSON output can be verified on any machine
-- **Bytes-only commitment**: File content is what matters, not filenames or paths
-- **No trust required**: Verification is cryptographic and reproducible
+## Why this exists
 
+When you want to prove that:
+- a file existed at a certain moment
+- a file belonged to a specific collection
+- two people have identical data without sharing it
 
-## What This Is (and Is Not)
+you need a **deterministic, reproducible commitment**.
 
-This tool **does not timestamp** data or anchor it to a blockchain.
+This tool creates Merkle roots using SHA-256 and allows independent verification anywhere, on any device.
 
-Instead, it creates a **cryptographic commitment** (Merkle root) that can later be:
-- Published anywhere (Git, blockchain, email, paper, OpenTimestamps, etc.)
-- Used as a reference to verify files or folders later
+## Core properties
 
-Think of it as a **deterministic proof generator**, not a notary.
+- **Bytes-only commitment**  
+  File paths and names are metadata. Verification is based on file *content bytes* only.
 
+- **Deterministic**  
+  The same files always produce the same root.
 
-## How It Works (High Level)
+- **Portable proofs**  
+  The output JSON can be verified later, offline, or by third parties.
 
-1. Each file is hashed using SHA-256
-2. Files become Merkle tree leaves
-3. A Merkle root is computed
-4. A JSON proof file is generated containing:
-   - Merkle root
-   - Tree structure
-   - File content hashes
-   - Canonicalization rules
-5. Anyone can later verify:
-   - A full folder matches the root
-   - A single file belongs to the committed set
+- **Local-first**  
+  All hashing happens inside your browser.
 
-All verification is done locally in the browser.
+## How it works (high level)
 
+### Folder commitment
+1. Files are filtered according to a folder policy
+2. Each file is hashed with SHA-256
+3. Leaf hashes are built from file content
+4. A Merkle tree is constructed
+5. The Merkle root + tree structure is exported as `merkle-tree.json`
 
-## Features
+### File verification
+Given:
+- a file
+- a `merkle-tree.json`
 
-### Merkle Root Generator
-- Folder → Merkle root (no upload, File System Access API)
-- Folder → Merkle root (upload fallback)
-- Single file → SHA-256 hash
-- Configurable folder policy:
-  - Ignore junk files
-  - Unicode normalization
-  - Hidden file handling
-- Export `merkle-tree.json`
+The tool checks whether the file’s content hash is included in the committed Merkle tree.
 
-### File Verification
-- Verify folder matches a Merkle proof
-- Verify individual file inclusion
-- File name and path independent verification
-- Clear error reporting when permissions or files change
+## Usage
 
+### 1. Generate a Merkle commitment
+- Choose **Folder** or **File**
+- Select upload or browser-native picker
+- Download `merkle-tree.json`
+- Copy the Merkle root if needed
 
-## Browser Support
+### 2. Verify
+- Upload `merkle-tree.json`
+- Verify:
+  - a full folder
+  - or a single file
 
-- **Chrome / Brave / Edge**: Full support
-- **Firefox / Safari**: Upload fallback supported (no folder picker)
+The tool will confirm whether the data belongs to the original commitment.
 
+## Browser support
 
-## Security & Privacy
+- Chrome / Edge: full support (File System Access API)
+- Firefox / Safari: folder upload fallback
 
+## Security notes
+
+- Uses WebCrypto SHA-256
 - No network requests
-- No analytics
-- No telemetry
-- No file uploads
+- No file data leaves your machine
+- Paths are not part of the cryptographic commitment
 
-Everything happens locally using the Web Crypto API.
+## License
 
-
-## 🛠️ Development
-
-```bash
-npm install
-npm run dev
+MIT License — see LICENSE file.
