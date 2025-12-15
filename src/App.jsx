@@ -54,7 +54,9 @@ export default function App() {
       <div style={shell}>
         <header style={header}>
           <div style={titleRow}>
-            <h1 style={title}>Merkle Tool</h1>
+            <h1 style={{ fontSize: 50, fontWeight: 600, letterSpacing: "-0.02em" }}>
+              Merkle Tool
+            </h1>
             <div style={tagline}>Local-only · bytes-only commitments</div>
           </div>
 
