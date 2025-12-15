@@ -1,263 +1,271 @@
-// src/components/MerkleRootGenerator.jsx
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  applyPathPolicy,
   buildMerkleTreeFromLeafHashes,
   computeFileContentHashHex,
-  concatBytes,
-  defaultPolicy,
-  hexToBytes,
   humanBytes,
-  isHiddenPath,
-  listFilesFromDirectoryHandle,
-  matchesIgnore,
   sha256Bytes,
   toHex,
 } from "../lib/merkle.js";
 
-const MODES = [
-  { id: "folder_fs", label: "Folder (No Upload)" },
-  { id: "folder_upload", label: "Folder (Upload)" },
-  { id: "file_fs", label: "File (No Upload)" },
-  { id: "file_upload", label: "File (Upload)" },
-];
+/**
+ * Bytes-only Merkle commitment:
+ * - contentHash = SHA256(fileBytes)
+ * - leafHash    = SHA256("leaf\0" + contentHashBytes)
+ * - nodes       = SHA256("node\0" + left + right)
+ * - ordering    = leafHash hex asc
+ */
+
+const DEFAULT_POLICY = {
+  includeHidden: false,
+  ignoreJunk: true,
+
+  // common junk (especially macOS)
+  ignoreNames: [".DS_Store", "Thumbs.db", "desktop.ini"],
+  ignorePrefixes: ["._"], // AppleDouble
+  ignorePathPrefixes: [".git/", "node_modules/", ".Spotlight-V100/", ".Trashes/"],
+};
+
+function normalizePath(p) {
+  return String(p || "").replace(/\\/g, "/");
+}
+function baseName(p) {
+  const s = normalizePath(p);
+  const parts = s.split("/");
+  return parts[parts.length - 1] || s;
+}
+function isHiddenPath(path) {
+  return normalizePath(path)
+    .split("/")
+    .some((seg) => seg.startsWith("."));
+}
+function shouldIgnoreRelPath(relPath, policy) {
+  const p = normalizePath(relPath);
+  const name = baseName(p);
+
+  if (!policy.includeHidden && (name.startsWith(".") || isHiddenPath(p))) return true;
+
+  if (policy.ignoreJunk) {
+    if ((policy.ignoreNames || []).includes(name)) return true;
+    if ((policy.ignorePrefixes || []).some((pref) => name.startsWith(pref))) return true;
+    if ((policy.ignorePathPrefixes || []).some((pref) => p.startsWith(pref))) return true;
+  }
+
+  return false;
+}
+
+async function listFilesFromDirectoryHandle(dirHandle) {
+  const out = [];
+
+  async function walk(handle, prefix = "") {
+    for await (const [name, entry] of handle.entries()) {
+      const rel = prefix ? `${prefix}/${name}` : name;
+      if (entry.kind === "file") {
+        const f = await entry.getFile();
+        out.push({ file: f, relPath: rel });
+      } else if (entry.kind === "directory") {
+        await walk(entry, rel);
+      }
+    }
+  }
+
+  await walk(dirHandle, "");
+  return out;
+}
+
+function ProgressBar({ done, total }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={barTrack}>
+        <div style={{ ...barFill, width: `${pct}%` }} />
+      </div>
+      <div style={{ marginTop: 8, fontSize: 12, opacity: 0.85 }}>
+        {done}/{total} files ({pct}%)
+      </div>
+    </div>
+  );
+}
 
 export default function MerkleRootGenerator({ limits }) {
-  const folderUploadRef = useRef(null);
-  const fileUploadRef = useRef(null);
+  const hasDir = typeof window !== "undefined" && "showDirectoryPicker" in window;
+  const hasOpen = typeof window !== "undefined" && "showOpenFilePicker" in window;
 
-  const hasDirectoryPicker = typeof window !== "undefined" && "showDirectoryPicker" in window;
-  const hasOpenFilePicker = typeof window !== "undefined" && "showOpenFilePicker" in window;
-
-  const [mode, setMode] = useState("folder_fs");
-  const [policy, setPolicy] = useState(defaultPolicy());
+  const [policy, setPolicy] = useState(DEFAULT_POLICY);
 
   const [status, setStatus] = useState("Idle.");
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
 
-  // Folder outputs (JSON)
-  const [folderRoot, setFolderRoot] = useState("");
-  const [folderJson, setFolderJson] = useState(null);
+  // folder outputs
+  const [root, setRoot] = useState("");
+  const [json, setJson] = useState(null);
 
-  // File outputs (SHA-256 only)
+  // single file output
+  const [fileHash, setFileHash] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileSize, setFileSize] = useState(0);
-  const [fileHash, setFileHash] = useState("");
 
-  const progressPct = useMemo(() => {
-    if (!progress.total) return 0;
-    return Math.round((progress.done / progress.total) * 100);
-  }, [progress]);
+  const pct = useMemo(
+    () => (progress.total ? Math.round((progress.done / progress.total) * 100) : 0),
+    [progress]
+  );
 
   function resetAll() {
     setError("");
     setStatus("Idle.");
     setProgress({ done: 0, total: 0 });
-    setFolderRoot("");
-    setFolderJson(null);
+
+    setRoot("");
+    setJson(null);
+
+    setFileHash("");
     setFileName("");
     setFileSize(0);
-    setFileHash("");
   }
 
   function downloadMerkleJson() {
-    if (!folderJson) return;
-    const blob = new Blob([JSON.stringify(folderJson, null, 2)], { type: "application/json" });
+    if (!json) return;
+    const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = "merkle-tree.json";
-    document.body.appendChild(a);
     a.click();
-    a.remove();
     URL.revokeObjectURL(url);
   }
 
-  async function handleGo() {
+  async function chooseFolderAndGenerate() {
     resetAll();
+    if (!hasDir) return;
 
     try {
-      if (mode === "folder_fs") {
-        if (!hasDirectoryPicker) throw new Error("Folder (No Upload) is not supported in this browser.");
-        const dir = await window.showDirectoryPicker();
-        const files = await listFilesFromDirectoryHandle(dir);
-        await generateFolderJson(files, "File System Access API");
-        return;
+      setStatus("Requesting folder permission…");
+      const dir = await window.showDirectoryPicker();
+
+      setStatus("Scanning folder…");
+      const pairs = await listFilesFromDirectoryHandle(dir);
+
+      // apply policy
+      const filtered = pairs.filter((p) => !shouldIgnoreRelPath(p.relPath, policy));
+      if (filtered.length === 0) throw new Error("No files left after applying Folder Policy.");
+
+      // limits
+      const totalBytes = filtered.reduce((a, p) => a + (p.file.size || 0), 0);
+      const biggest = Math.max(...filtered.map((p) => p.file.size || 0));
+      if (biggest > limits.maxFileBytes) {
+        throw new Error(
+          `A file exceeds max file size (${humanBytes(limits.maxFileBytes)}). Largest is ${humanBytes(biggest)}.`
+        );
+      }
+      if (totalBytes > limits.maxTotalBytes) {
+        throw new Error(
+          `Folder exceeds max total size (${humanBytes(limits.maxTotalBytes)}). Total is ${humanBytes(totalBytes)}.`
+        );
       }
 
-      if (mode === "folder_upload") {
-        folderUploadRef.current?.click();
-        return;
+      setStatus("Hashing files locally (SHA-256)…");
+      setProgress({ done: 0, total: filtered.length });
+
+      const enc = new TextEncoder();
+      const leafHashes = [];
+      const leaves = [];
+
+      for (let i = 0; i < filtered.length; i++) {
+        const { file } = filtered[i];
+
+        let bytes;
+        try {
+          bytes = await file.arrayBuffer();
+        } catch {
+          throw new Error(`Failed to read "${file.name}". Permission may have been revoked or it moved.`);
+        }
+
+        const contentHashBytes = await sha256Bytes(bytes);
+        const contentHashHex = toHex(contentHashBytes);
+
+        const leafHashBytes = await sha256Bytes(
+          new Uint8Array([...enc.encode("leaf\0"), ...contentHashBytes])
+        );
+
+        leafHashes.push(leafHashBytes);
+        leaves.push({
+          contentHash: contentHashHex,
+          leafHash: toHex(leafHashBytes),
+          size: file.size,
+          lastModified: file.lastModified,
+        });
+
+        setProgress({ done: i + 1, total: filtered.length });
       }
 
-      if (mode === "file_fs") {
-        if (!hasOpenFilePicker) throw new Error("File (No Upload) is not supported in this browser.");
-        const [handle] = await window.showOpenFilePicker({ multiple: false });
-        const f = await handle.getFile();
-        await hashSingleFile(f);
-        return;
-      }
+      // canonical ordering: leafHash hex asc
+      leafHashes.sort((a, b) => (toHex(a) < toHex(b) ? -1 : 1));
+      leaves.sort((a, b) => (a.leafHash < b.leafHash ? -1 : 1));
 
-      if (mode === "file_upload") {
-        fileUploadRef.current?.click();
-        return;
-      }
+      setStatus("Building Merkle tree…");
+      const { root: rootBytes, levels } = await buildMerkleTreeFromLeafHashes(leafHashes);
+      const rootHex = toHex(rootBytes);
+
+      const out = {
+        schema: "merkle-bytes-tree@1",
+        generatedAt: new Date().toISOString(),
+        algorithm: "SHA-256",
+        folderPolicy: policy,
+        limits,
+        canonicalization: {
+          contentHash: "SHA256(fileBytes)",
+          leaf: 'SHA256("leaf\\0" + contentHashBytes)',
+          node: 'SHA256("node\\0" + left + right)',
+          ordering: "leafHash hex asc",
+          oddRule: "duplicate last",
+        },
+        summary: {
+          fileCount: leaves.length,
+          totalBytes,
+          totalBytesHuman: humanBytes(totalBytes),
+        },
+        root: rootHex,
+        tree: { levels: levels.map((lvl) => lvl.map((h) => toHex(h))) },
+        leaves,
+      };
+
+      setRoot(rootHex);
+      setJson(out);
+      setStatus("Done.");
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setError(String(e?.message || e));
       setStatus("Idle.");
     }
   }
 
-  async function onFolderUploadSelected(e) {
-    const fileList = Array.from(e.target.files || []);
-    e.target.value = "";
-    if (!fileList.length) return;
+  async function chooseFileAndHash() {
+    resetAll();
+    if (!hasOpen) return;
 
-    const files = fileList.map((f) => ({
-      relativePath: (f.webkitRelativePath || f.name).replace(/\\/g, "/"),
-      file: f,
-      size: f.size,
-      lastModified: f.lastModified,
-    }));
+    try {
+      setStatus("Choosing file…");
+      const [handle] = await window.showOpenFilePicker({ multiple: false });
+      const f = await handle.getFile();
 
-    await generateFolderJson(files, "webkitdirectory fallback");
-  }
+      setStatus("Hashing file locally (SHA-256)…");
+      setFileName(f.name);
+      setFileSize(f.size);
 
-  async function onFileUploadSelected(e) {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    await hashSingleFile(f);
-  }
+      if (f.size > limits.maxFileBytes) {
+        throw new Error(
+          `File exceeds max file size (${humanBytes(limits.maxFileBytes)}). File is ${humanBytes(f.size)}.`
+        );
+      }
 
-  async function hashSingleFile(file) {
-    setStatus("Hashing file locally (SHA-256)...");
-    setFileName(file.name);
-    setFileSize(file.size);
-
-    if (file.size > limits.maxFileBytes) {
-      throw new Error(
-        `File exceeds per-file limit (${humanBytes(limits.maxFileBytes)}). File is ${humanBytes(file.size)}.`
-      );
+      const hex = await computeFileContentHashHex(f);
+      setFileHash(hex);
+      setStatus("Done.");
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      setError(String(e?.message || e));
+      setStatus("Idle.");
     }
-
-    const hex = await computeFileContentHashHex(file);
-    setFileHash(hex);
-    setStatus("Done.");
-  }
-
-  // ✅ BYTES-ONLY folder commitment
-  async function generateFolderJson(files, sourceLabel) {
-    setError("");
-    setStatus("Preparing file list...");
-
-    // Policy still controls which files are included/excluded,
-    // but the *commitment* is bytes-only (no paths in leaf hash).
-    let cleaned = files
-      .filter((x) => x?.file && typeof x.relativePath === "string")
-      .map((x) => ({ ...x, relativePath: applyPathPolicy(x.relativePath, policy) }))
-      .filter((x) => {
-        const rel = x.relativePath;
-
-        if (!policy.includeHidden && isHiddenPath(rel)) return false;
-
-        if (policy.ignoreJunk) {
-          const base = rel.split("/").pop() || rel;
-          if ((policy.extraIgnoreNames || []).includes(base)) return false;
-          if (matchesIgnore(rel, policy.ignorePatterns)) return false;
-        }
-        return true;
-      });
-
-    if (!cleaned.length) throw new Error("No files found after applying Folder Policy filters.");
-
-    // limits
-    const totalBytes = cleaned.reduce((acc, x) => acc + (x.size || 0), 0);
-    const biggest = Math.max(...cleaned.map((x) => x.size || 0));
-    if (biggest > limits.maxFileBytes) {
-      throw new Error(
-        `At least one file exceeds per-file limit (${humanBytes(limits.maxFileBytes)}). Largest: ${humanBytes(biggest)}.`
-      );
-    }
-    if (totalBytes > limits.maxTotalBytes) {
-      throw new Error(
-        `Folder exceeds total limit (${humanBytes(limits.maxTotalBytes)}). Total: ${humanBytes(totalBytes)}.`
-      );
-    }
-
-    setProgress({ done: 0, total: cleaned.length });
-    setStatus("Hashing files locally (SHA-256)...");
-
-    const leaves = [];
-    const enc = new TextEncoder();
-
-    for (let i = 0; i < cleaned.length; i++) {
-      const { file, relativePath, size, lastModified } = cleaned[i];
-
-      let bytes;
-try {
-  bytes = await file.arrayBuffer();
-} catch {
-  throw new Error(
-    `Failed to read file: "${relativePath}". ` +
-    `The file may have been moved, renamed, or permission was lost.`
-  );
-}
-const contentHashBytes = await sha256Bytes(bytes);
-      const contentHashHex = toHex(contentHashBytes);
-
-      // ✅ leafHash commits to bytes only
-      const leafHashBytes = await sha256Bytes(
-        concatBytes(enc.encode("leaf\0"), contentHashBytes)
-      );
-
-      leaves.push({
-        // Keep path as metadata only (NOT committed)
-        path: relativePath,
-        size,
-        lastModified,
-        contentHash: contentHashHex,
-        leafHash: toHex(leafHashBytes),
-      });
-
-      setProgress({ done: i + 1, total: cleaned.length });
-    }
-
-    // ✅ Canonical order (bytes-only): sort by leafHash
-leaves.sort((a, b) => (a.leafHash < b.leafHash ? -1 : a.leafHash > b.leafHash ? 1 : 0));
-
-    setStatus("Building Merkle tree...");
-    const leafBytes = leaves.map((l) => hexToBytes(l.leafHash));
-    const { root, levels } = await buildMerkleTreeFromLeafHashes(leafBytes);
-    const rootHex = toHex(root);
-
-    const json = {
-      schema: "merkle-bytes-tree@1",
-      generatedAt: new Date().toISOString(),
-      environment: { userAgent: navigator.userAgent, source: sourceLabel },
-      algorithm: "SHA-256",
-      canonicalization: {
-        leaf: `SHA256("leaf\\0" + contentHashBytes)  // bytes-only`,
-        node: `SHA256("node\\0" + leftHashBytes + rightHashBytes)`,
-        sortLeavesBy: "leafHash (hex asc)",
-        oddNodeRule: "duplicate_last",
-      },
-      folderPolicy: policy,
-      limits,
-      summary: {
-        fileCount: leaves.length,
-        totalBytes,
-        totalBytesHuman: humanBytes(totalBytes),
-      },
-      root: rootHex,
-      tree: { levels: levels.map((lvl) => lvl.map((h) => toHex(h))) },
-      leaves,
-    };
-
-    setFolderRoot(rootHex);
-    setFolderJson(json);
-    setStatus("Done.");
   }
 
   return (
@@ -265,133 +273,71 @@ leaves.sort((a, b) => (a.leafHash < b.leafHash ? -1 : a.leafHash > b.leafHash ? 
       <h1 style={{ marginTop: 0 }}>Merkle Root Generator</h1>
 
       <div style={card}>
-        <h2 style={{ marginTop: 0 }}>Method</h2>
-
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <select value={mode} onChange={(e) => setMode(e.target.value)} style={select}>
-            {MODES.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-
-          <button
-            style={button}
-            onClick={handleGo}
-            disabled={(mode === "folder_fs" && !hasDirectoryPicker) || (mode === "file_fs" && !hasOpenFilePicker)}
-          >
-            Choose…
+          <button style={button} onClick={chooseFolderAndGenerate} disabled={!hasDir}>
+            Folder → Merkle Tree
           </button>
 
-          <input
-            ref={folderUploadRef}
-            type="file"
-            multiple
-            webkitdirectory="true"
-            directory="true"
-            style={{ display: "none" }}
-            onChange={onFolderUploadSelected}
-          />
-          <input
-            ref={fileUploadRef}
-            type="file"
-            style={{ display: "none" }}
-            onChange={onFileUploadSelected}
-          />
+          <button style={button} onClick={chooseFileAndHash} disabled={!hasOpen}>
+            Single File → SHA-256
+          </button>
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 13 }}>
-          <b>Note:</b> Folder JSON commits to <b>file bytes only</b> (paths are metadata and do not affect the root).
-        </div>
-      </div>
-
-      {(mode === "folder_fs" || mode === "folder_upload") && (
-        <div style={card}>
-          <h2 style={{ marginTop: 0 }}>Folder Policy</h2>
-
-          <label style={row}>
-            <input
-              type="checkbox"
-              checked={policy.includeHidden}
-              onChange={(e) => setPolicy((p) => ({ ...p, includeHidden: e.target.checked }))}
-            />
-            Include hidden files/folders (names starting with ".")
-          </label>
-
-          <label style={row}>
-            <input
-              type="checkbox"
-              checked={policy.ignoreJunk}
-              onChange={(e) => setPolicy((p) => ({ ...p, ignoreJunk: e.target.checked }))}
-            />
-            Ignore junk files & patterns (recommended)
-          </label>
-
-          <label style={row}>
-            <input
-              type="checkbox"
-              checked={policy.unicodeNFC}
-              onChange={(e) => setPolicy((p) => ({ ...p, unicodeNFC: e.target.checked }))}
-            />
-            Normalize Unicode paths to NFC (recommended)
-          </label>
-
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 13, marginBottom: 6 }}>Ignore patterns (one per line)</div>
-            <textarea
-              value={(policy.ignorePatterns || []).join("\n")}
-              onChange={(e) =>
-                setPolicy((p) => ({
-                  ...p,
-                  ignorePatterns: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
-                }))
-              }
-              rows={5}
-              style={textarea}
-            />
+        {(!hasDir || !hasOpen) && (
+          <div style={hint}>
+            Your browser must support the File System Access API. Use Chrome/Brave/Edge on a secure context (https or localhost).
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div style={card}>
-        <div>
-          <b>Status:</b> {status}
+        <h2 style={{ marginTop: 0 }}>Folder Policy</h2>
+
+        <label style={row}>
+          <input
+            type="checkbox"
+            checked={policy.includeHidden}
+            onChange={(e) => setPolicy((p) => ({ ...p, includeHidden: e.target.checked }))}
+          />
+          Include hidden files/folders (names starting with ".")
+        </label>
+
+        <label style={row}>
+          <input
+            type="checkbox"
+            checked={policy.ignoreJunk}
+            onChange={(e) => setPolicy((p) => ({ ...p, ignoreJunk: e.target.checked }))}
+          />
+          Ignore junk/system files (recommended)
+        </label>
+
+        <div style={hint}>
+          Ignored by default: <span style={monoInline}>.DS_Store</span>, <span style={monoInline}>._*</span>,{" "}
+          <span style={monoInline}>.Spotlight-V100/</span>, <span style={monoInline}>.Trashes/</span>,{" "}
+          <span style={monoInline}>.git/</span>, <span style={monoInline}>node_modules/</span>
         </div>
-
-        {progress.total > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <b>Progress:</b> {progress.done}/{progress.total} ({progressPct}%)
-          </div>
-        )}
-
-        {error && (
-          <div style={{ marginTop: 10 }}>
-            <b>Error:</b> {error}
-          </div>
-        )}
       </div>
 
-      {folderJson && (
+      {progress.total > 0 && <ProgressBar done={progress.done} total={progress.total} />}
+
+      {json && (
         <div style={card}>
           <h2 style={{ marginTop: 0 }}>Folder Result</h2>
-          <div>
-            <b>Merkle root:</b>
-          </div>
-          <div style={mono}>{folderRoot}</div>
+          <div style={{ opacity: 0.8, marginBottom: 6 }}>Merkle root:</div>
+          <div style={mono}>{root}</div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <button style={button} onClick={downloadMerkleJson}>
               Download merkle-tree.json
             </button>
-            <button style={button} onClick={() => navigator.clipboard.writeText(folderRoot)}>
+            <button style={button} onClick={() => navigator.clipboard.writeText(root)}>
               Copy root
             </button>
           </div>
 
           <details style={{ marginTop: 10 }}>
             <summary>Preview JSON</summary>
-            <pre style={pre}>{JSON.stringify(folderJson, null, 2)}</pre>
+            <pre style={pre}>{JSON.stringify(json, null, 2)}</pre>
           </details>
         </div>
       )}
@@ -399,29 +345,95 @@ leaves.sort((a, b) => (a.leafHash < b.leafHash ? -1 : a.leafHash > b.leafHash ? 
       {fileHash && (
         <div style={card}>
           <h2 style={{ marginTop: 0 }}>File Result</h2>
-          <div>
-            <b>File:</b> {fileName} ({humanBytes(fileSize)})
+          <div style={{ fontSize: 12, opacity: 0.85 }}>
+            {fileName} · {humanBytes(fileSize)}
           </div>
-          <div style={{ marginTop: 8 }}>
-            <b>SHA-256:</b>
-          </div>
+          <div style={{ marginTop: 8, opacity: 0.8 }}>SHA-256:</div>
           <div style={mono}>{fileHash}</div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          <div style={{ marginTop: 10 }}>
             <button style={button} onClick={() => navigator.clipboard.writeText(fileHash)}>
               Copy hash
             </button>
           </div>
         </div>
       )}
+
+      {error && <div style={{ marginTop: 10, color: "#ff6b6b" }}>Error: {error}</div>}
+      <div style={{ marginTop: 10, opacity: 0.9 }}>Status: {status}{progress.total ? ` · ${pct}%` : ""}</div>
     </div>
   );
 }
 
-const card = { border: "1px solid #ddd", borderRadius: 12, padding: 12, marginTop: 14 };
-const button = { padding: "10px 14px", borderRadius: 12, border: "1px solid #111", background: "#111", color: "white", cursor: "pointer" };
-const select = { padding: "10px 12px", borderRadius: 10, border: "1px solid #ccc", minWidth: 220 };
-const row = { display: "flex", gap: 10, alignItems: "center", marginTop: 8 };
-const textarea = { width: "100%", boxSizing: "border-box", maxWidth: "100%", borderRadius: 10, border: "1px solid #2a2a2a", padding: 10, background: "#0f0f10", color: "#eaeaea", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12, outline: "none", resize: "vertical" };
-const mono = { marginTop: 6, padding: 10, border: "1px solid #ddd", borderRadius: 10, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", wordBreak: "break-all" };
-const pre = { marginTop: 10, padding: 10, border: "1px solid #ddd", borderRadius: 10, overflowX: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12 };
+/** ---------------- styles ---------------- **/
+
+const card = {
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 16,
+  padding: 16,
+  marginTop: 14,
+  background: "rgba(0,0,0,0.25)",
+  boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
+};
+
+const button = {
+  padding: "12px 16px",
+  borderRadius: 12,
+  background: "#111",
+  color: "white",
+  border: "1px solid rgba(255,255,255,0.12)",
+  cursor: "pointer",
+};
+
+const row = {
+  display: "flex",
+  gap: 10,
+  alignItems: "center",
+  marginTop: 8,
+};
+
+const hint = {
+  marginTop: 10,
+  fontSize: 12,
+  opacity: 0.75,
+  lineHeight: 1.5,
+};
+
+const mono = {
+  marginTop: 6,
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.04)",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  wordBreak: "break-all",
+};
+
+const monoInline = {
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+};
+
+const pre = {
+  marginTop: 10,
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.04)",
+  overflowX: "auto",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontSize: 12,
+};
+
+const barTrack = {
+  width: "100%",
+  height: 10,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.06)",
+  overflow: "hidden",
+};
+
+const barFill = {
+  height: "100%",
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.85)",
+};
