@@ -1,13 +1,20 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   buildMerkleTreeFromLeafHashes,
+  computeLeafHashBytes,
   computeRootFromProof,
   hexToBytes,
   humanBytes,
   isHex256,
+  listFilesFromDirectoryHandle,
   sha256Bytes,
   toHex,
 } from "../lib/merkle.js";
+import {
+  ProgressBar,
+  readFileWithErrorHandling,
+  shouldIgnoreRelPath,
+} from "../lib/utils.jsx";
 
 /**
  * Verification supports:
@@ -16,51 +23,7 @@ import {
  * 3) Verify single file (via showOpenFilePicker) → membership proof against JSON
  */
 
-async function listFilesFromDirectoryHandle(dirHandle) {
-  const out = [];
 
-  async function walk(handle, prefix = "") {
-    for await (const [name, entry] of handle.entries()) {
-      const rel = prefix ? `${prefix}/${name}` : name;
-      if (entry.kind === "file") {
-        const f = await entry.getFile();
-        out.push({ file: f, relPath: rel });
-      } else if (entry.kind === "directory") {
-        await walk(entry, rel);
-      }
-    }
-  }
-
-  await walk(dirHandle, "");
-  return out;
-}
-
-function normalizePath(p) {
-  return String(p || "").replace(/\\/g, "/");
-}
-function baseName(p) {
-  const s = normalizePath(p);
-  const parts = s.split("/");
-  return parts[parts.length - 1] || s;
-}
-function isHiddenPath(path) {
-  return normalizePath(path)
-    .split("/")
-    .some((seg) => seg.startsWith("."));
-}
-function shouldIgnoreRelPath(relPath, policy) {
-  const p = normalizePath(relPath);
-  const name = baseName(p);
-
-  if (!policy?.includeHidden && (name.startsWith(".") || isHiddenPath(p))) return true;
-
-  if (policy?.ignoreJunk) {
-    if ((policy.ignoreNames || []).includes(name)) return true;
-    if ((policy.ignorePrefixes || []).some((pref) => name.startsWith(pref))) return true;
-    if ((policy.ignorePathPrefixes || []).some((pref) => p.startsWith(pref))) return true;
-  }
-  return false;
-}
 
 function buildProof(levels, idx) {
   const proof = [];
@@ -77,19 +40,6 @@ function buildProof(levels, idx) {
   return proof;
 }
 
-function ProgressBar({ done, total }) {
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  return (
-    <div style={{ marginTop: 10 }}>
-      <div style={barTrack}>
-        <div style={{ ...barFill, width: `${pct}%` }} />
-      </div>
-      <div style={{ marginTop: 8, fontSize: 12, opacity: 0.85 }}>
-        {done}/{total} files ({pct}%)
-      </div>
-    </div>
-  );
-}
 
 export default function FileVerification({ limits }) {
   const hasDir = typeof window !== "undefined" && "showDirectoryPicker" in window;
@@ -101,6 +51,17 @@ export default function FileVerification({ limits }) {
   const [status, setStatus] = useState("Idle.");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [isProcessing, setIsProcessing] = useState(false);
+  const lastProgressUpdate = useRef(0);
+
+  // Throttle progress updates to avoid excessive re-renders
+  const updateProgressThrottled = useCallback((done, total) => {
+    const now = Date.now();
+    if (now - lastProgressUpdate.current > 100) { // Update at most every 100ms
+      setProgress({ done, total });
+      lastProgressUpdate.current = now;
+    }
+  }, []);
 
   const [folderResult, setFolderResult] = useState(null);
   const [fileResult, setFileResult] = useState(null);
@@ -169,6 +130,7 @@ export default function FileVerification({ limits }) {
     if (!hasDir) return;
 
     resetResults();
+    setIsProcessing(true);
 
     try {
       setStatus("Requesting folder permission…");
@@ -214,12 +176,7 @@ export default function FileVerification({ limits }) {
       for (let i = 0; i < filtered.length; i++) {
         const { file } = filtered[i];
 
-        let bytes;
-        try {
-          bytes = await file.arrayBuffer();
-        } catch {
-          throw new Error(`Failed to read "${file.name}". Permission may have been revoked or it moved.`);
-        }
+        const bytes = await readFileWithErrorHandling(file);
 
         const contentHashBytes = await sha256Bytes(bytes);
         const leafHashBytes = await sha256Bytes(
@@ -227,8 +184,11 @@ export default function FileVerification({ limits }) {
         );
 
         leafHashes.push(leafHashBytes);
-        setProgress({ done: i + 1, total: filtered.length });
+        updateProgressThrottled(i + 1, filtered.length);
       }
+
+      // Ensure final progress is shown
+      setProgress({ done: filtered.length, total: filtered.length });
 
       // canonical ordering
       leafHashes.sort((a, b) => (toHex(a) < toHex(b) ? -1 : 1));
@@ -255,6 +215,8 @@ export default function FileVerification({ limits }) {
       if (e?.name === "AbortError") return;
       setError(String(e?.message || e));
       setStatus("Idle.");
+    } finally {
+      setIsProcessing(false);
     }
   }
 
@@ -263,6 +225,7 @@ export default function FileVerification({ limits }) {
     if (!hasOpen) return;
 
     resetResults();
+    setIsProcessing(true);
 
     try {
       setStatus("Choosing file…");
@@ -274,20 +237,13 @@ export default function FileVerification({ limits }) {
       }
 
       setStatus("Hashing file locally…");
-      let bytes;
-      try {
-        bytes = await file.arrayBuffer();
-      } catch {
-        throw new Error(`Failed to read "${file.name}". Permission may have been revoked.`);
-      }
+      const bytes = await readFileWithErrorHandling(file);
 
       const enc = new TextEncoder();
       const contentHashBytes = await sha256Bytes(bytes);
       const contentHashHex = toHex(contentHashBytes).toLowerCase();
 
-      const leafHashBytes = await sha256Bytes(
-        new Uint8Array([...enc.encode("leaf\0"), ...contentHashBytes])
-      );
+      const leafHashBytes = await computeLeafHashBytes(contentHashBytes);
       const leafHashHex = toHex(leafHashBytes).toLowerCase();
 
       // quick filter by content hash
@@ -330,6 +286,8 @@ export default function FileVerification({ limits }) {
       if (e?.name === "AbortError") return;
       setError(String(e?.message || e));
       setStatus("Idle.");
+    } finally {
+      setIsProcessing(false);
     }
   }
 
@@ -376,11 +334,19 @@ export default function FileVerification({ limits }) {
 
       <div style={card}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button style={button} onClick={verifyFolder} disabled={!json || !hasDir}>
-            Verify Folder
+          <button
+            style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
+            onClick={verifyFolder}
+            disabled={!json || !hasDir || isProcessing}
+          >
+            {isProcessing ? "Verifying..." : "Verify Folder"}
           </button>
-          <button style={button} onClick={verifySingleFile} disabled={!json || !hasOpen}>
-            Verify Single File
+          <button
+            style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
+            onClick={verifySingleFile}
+            disabled={!json || !hasOpen || isProcessing}
+          >
+            {isProcessing ? "Verifying..." : "Verify Single File"}
           </button>
         </div>
 
@@ -394,9 +360,14 @@ export default function FileVerification({ limits }) {
       {progress.total > 0 && <ProgressBar done={progress.done} total={progress.total} />}
 
       {folderResult && (
-        <div style={card}>
-          <div style={{ fontSize: 16 }}>
-            Folder: {folderResult.ok ? "MATCH ✅" : "MISMATCH ❌"}
+        <div style={{ ...card, borderColor: folderResult.ok ? "#2ecc71" : "#e74c3c" }}>
+          <div style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: folderResult.ok ? "#2ecc71" : "#e74c3c",
+            marginBottom: 12
+          }}>
+            {folderResult.ok ? "✅ Folder Verified Successfully" : "❌ Folder Verification Failed"}
           </div>
 
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.88, lineHeight: 1.6 }}>
@@ -419,23 +390,51 @@ export default function FileVerification({ limits }) {
       )}
 
       {fileResult && (
-        <div style={card}>
-          <div style={{ fontSize: 16 }}>
-            File: {fileResult.ok ? "MATCH ✅" : "NOT FOUND ❌"}
+        <div style={{ ...card, borderColor: fileResult.ok ? "#2ecc71" : "#e74c3c" }}>
+          <div style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: fileResult.ok ? "#2ecc71" : "#e74c3c",
+            marginBottom: fileResult.ok ? 0 : 12
+          }}>
+            {fileResult.ok ? "✅ File Verified Successfully" : "❌ File Verification Failed"}
           </div>
           {!fileResult.ok && fileResult.reason && (
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>{fileResult.reason}</div>
+            <div style={{
+              fontSize: 14,
+              opacity: 0.9,
+              lineHeight: 1.5,
+              padding: 8,
+              background: "rgba(231, 76, 60, 0.05)",
+              borderRadius: 6
+            }}>
+              {fileResult.reason}
+            </div>
           )}
         </div>
       )}
 
-      <div style={{ marginTop: 12, opacity: 0.9 }}>
+      <div style={{
+        marginTop: 12,
+        padding: 8,
+        background: "rgba(255,255,255,0.02)",
+        borderRadius: 8,
+        fontSize: 14,
+        opacity: 0.9
+      }}>
         Status: {status}{progress.total ? ` · ${pct}%` : ""}
       </div>
 
       {error && (
-        <div style={{ marginTop: 10, color: "#ff6b6b", whiteSpace: "pre-wrap" }}>
-          Error: {error}
+        <div style={{
+          marginTop: 10,
+          padding: 12,
+          background: "rgba(255, 107, 107, 0.1)",
+          border: "1px solid rgba(255, 107, 107, 0.3)",
+          borderRadius: 8,
+          color: "#ff6b6b"
+        }}>
+          ⚠️ {error}
         </div>
       )}
     </div>
@@ -460,6 +459,12 @@ const button = {
   color: "white",
   border: "1px solid rgba(255,255,255,0.12)",
   cursor: "pointer",
+  transition: "all 0.2s ease",
+};
+
+const buttonDisabled = {
+  opacity: 0.5,
+  cursor: "not-allowed",
 };
 
 const hint = {

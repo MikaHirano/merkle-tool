@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { humanBytes } from "./lib/merkle.js";
 
 const DEFAULT_LIMITS = {
   maxTotalBytes: 500 * 1024 * 1024, // 500 MB
@@ -30,9 +31,7 @@ export default function App() {
         if (!alive) return;
 
         if (!mod?.default) {
-          setLoadErr(
-            `Loaded module but no default export. Export keys: ${Object.keys(mod || {}).join(", ")}`
-          );
+          setLoadErr(`Loaded module but no default export. Export keys: ${Object.keys(mod || {}).join(", ")}`);
           return;
         }
 
@@ -83,17 +82,29 @@ export default function App() {
           </div>
 
           <div style={mutedSmall}>
-            Current: total ≈ <b>{formatMB(limits.maxTotalBytes)} MB</b> /{" "}
-            <b>{formatGB(limits.maxTotalBytes)} GB</b> · per-file ≈{" "}
-            <b>{formatMB(limits.maxFileBytes)} MB</b> / <b>{formatGB(limits.maxFileBytes)} GB</b>
+            Total limit: <b>{humanBytes(limits.maxTotalBytes)}</b> · File limit: <b>{humanBytes(limits.maxFileBytes)}</b>
           </div>
         </section>
 
         <section style={card}>
-          {loading && <div style={muted}>Loading…</div>}
+          {loading && (
+            <div style={loadingState}>
+              <div style={spinner}></div>
+              <div>Loading component...</div>
+            </div>
+          )}
 
           {!loading && loadErr && (
-            <pre style={errorBox}>{loadErr}</pre>
+            <div style={errorState}>
+              <div style={{ fontSize: 18, marginBottom: 8 }}>⚠️ Component Load Error</div>
+              <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 12 }}>
+                Failed to load the requested component. This might be due to a network issue or browser compatibility.
+              </div>
+              <details style={{ fontSize: 12 }}>
+                <summary style={{ cursor: "pointer", opacity: 0.7 }}>Technical details</summary>
+                <pre style={{ ...errorBox, marginTop: 8 }}>{loadErr}</pre>
+              </details>
+            </div>
           )}
 
           {!loading && !loadErr && Cmp && <Cmp limits={limits} />}
@@ -153,12 +164,6 @@ function LimitInput({ label, bytes, onBytesChange }) {
   );
 }
 
-function formatMB(bytes) {
-  return (bytes / (1024 * 1024)).toFixed(0);
-}
-function formatGB(bytes) {
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2);
-}
 
 /* ---------- Styles (dark, centered) ---------- */
 
@@ -169,8 +174,20 @@ const viewport = {
   color: "#eaeaea",
   fontFamily:
     "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-  padding: "64px 24px",
+  padding: "64px 16px",
 };
+
+// Add spinner animation
+if (typeof document !== "undefined") {
+  const style = document.createElement("style");
+  style.textContent = `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 const shell = {
   width: "100%",
@@ -264,7 +281,8 @@ const input = {
   border: "1px solid #2a2a2a",
   borderRadius: 10,
   padding: "10px 12px",
-  width: 140,
+  width: "100%",
+  maxWidth: 140,
   outline: "none",
 };
 
@@ -297,4 +315,31 @@ const errorBox = {
   color: "#ffb4b4",
   overflowX: "auto",
   whiteSpace: "pre-wrap",
+};
+
+const loadingState = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "40px 20px",
+  gap: 16,
+};
+
+const spinner = {
+  width: 24,
+  height: 24,
+  border: "2px solid rgba(255,255,255,0.1)",
+  borderTop: "2px solid rgba(255,255,255,0.8)",
+  borderRadius: "50%",
+  animation: "spin 1s linear infinite",
+};
+
+const errorState = {
+  padding: 20,
+  textAlign: "center",
+  color: "#ffb4b4",
+  background: "rgba(255, 116, 116, 0.05)",
+  border: "1px solid rgba(255, 116, 116, 0.2)",
+  borderRadius: 12,
 };

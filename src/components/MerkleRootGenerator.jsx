@@ -1,11 +1,18 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   buildMerkleTreeFromLeafHashes,
   computeFileContentHashHex,
+  computeLeafHashBytes,
   humanBytes,
+  listFilesFromDirectoryHandle,
   sha256Bytes,
   toHex,
 } from "../lib/merkle.js";
+import {
+  ProgressBar,
+  readFileWithErrorHandling,
+  shouldIgnoreRelPath,
+} from "../lib/utils.jsx";
 
 /**
  * Bytes-only Merkle commitment:
@@ -18,73 +25,10 @@ import {
 const DEFAULT_POLICY = {
   includeHidden: false,
   ignoreJunk: true,
-
-  // common junk (especially macOS)
   ignoreNames: [".DS_Store", "Thumbs.db", "desktop.ini"],
-  ignorePrefixes: ["._"], // AppleDouble
+  ignorePrefixes: ["._"],
   ignorePathPrefixes: [".git/", "node_modules/", ".Spotlight-V100/", ".Trashes/"],
 };
-
-function normalizePath(p) {
-  return String(p || "").replace(/\\/g, "/");
-}
-function baseName(p) {
-  const s = normalizePath(p);
-  const parts = s.split("/");
-  return parts[parts.length - 1] || s;
-}
-function isHiddenPath(path) {
-  return normalizePath(path)
-    .split("/")
-    .some((seg) => seg.startsWith("."));
-}
-function shouldIgnoreRelPath(relPath, policy) {
-  const p = normalizePath(relPath);
-  const name = baseName(p);
-
-  if (!policy.includeHidden && (name.startsWith(".") || isHiddenPath(p))) return true;
-
-  if (policy.ignoreJunk) {
-    if ((policy.ignoreNames || []).includes(name)) return true;
-    if ((policy.ignorePrefixes || []).some((pref) => name.startsWith(pref))) return true;
-    if ((policy.ignorePathPrefixes || []).some((pref) => p.startsWith(pref))) return true;
-  }
-
-  return false;
-}
-
-async function listFilesFromDirectoryHandle(dirHandle) {
-  const out = [];
-
-  async function walk(handle, prefix = "") {
-    for await (const [name, entry] of handle.entries()) {
-      const rel = prefix ? `${prefix}/${name}` : name;
-      if (entry.kind === "file") {
-        const f = await entry.getFile();
-        out.push({ file: f, relPath: rel });
-      } else if (entry.kind === "directory") {
-        await walk(entry, rel);
-      }
-    }
-  }
-
-  await walk(dirHandle, "");
-  return out;
-}
-
-function ProgressBar({ done, total }) {
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  return (
-    <div style={{ marginTop: 10 }}>
-      <div style={barTrack}>
-        <div style={{ ...barFill, width: `${pct}%` }} />
-      </div>
-      <div style={{ marginTop: 8, fontSize: 12, opacity: 0.85 }}>
-        {done}/{total} files ({pct}%)
-      </div>
-    </div>
-  );
-}
 
 export default function MerkleRootGenerator({ limits }) {
   const hasDir = typeof window !== "undefined" && "showDirectoryPicker" in window;
@@ -95,6 +39,17 @@ export default function MerkleRootGenerator({ limits }) {
   const [status, setStatus] = useState("Idle.");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [copyFeedback, setCopyFeedback] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const lastProgressUpdate = useRef(0);
+
+  const updateProgressThrottled = useCallback((done, total) => {
+    const now = Date.now();
+    if (now - lastProgressUpdate.current > 100) { // Update at most every 100ms
+      setProgress({ done, total });
+      lastProgressUpdate.current = now;
+    }
+  }, []);
 
   // folder outputs
   const [root, setRoot] = useState("");
@@ -123,6 +78,17 @@ export default function MerkleRootGenerator({ limits }) {
     setFileSize(0);
   }
 
+  async function copyToClipboard(text, successMessage = "Copied!") {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback(successMessage);
+      setTimeout(() => setCopyFeedback(""), 2000);
+    } catch (err) {
+      setCopyFeedback("Copy failed");
+      setTimeout(() => setCopyFeedback(""), 2000);
+    }
+  }
+
   function downloadMerkleJson() {
     if (!json) return;
     const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
@@ -138,6 +104,7 @@ export default function MerkleRootGenerator({ limits }) {
     resetAll();
     if (!hasDir) return;
 
+    setIsProcessing(true);
     try {
       setStatus("Requesting folder permission…");
       const dir = await window.showDirectoryPicker();
@@ -173,19 +140,12 @@ export default function MerkleRootGenerator({ limits }) {
       for (let i = 0; i < filtered.length; i++) {
         const { file } = filtered[i];
 
-        let bytes;
-        try {
-          bytes = await file.arrayBuffer();
-        } catch {
-          throw new Error(`Failed to read "${file.name}". Permission may have been revoked or it moved.`);
-        }
+        const bytes = await readFileWithErrorHandling(file);
 
         const contentHashBytes = await sha256Bytes(bytes);
         const contentHashHex = toHex(contentHashBytes);
 
-        const leafHashBytes = await sha256Bytes(
-          new Uint8Array([...enc.encode("leaf\0"), ...contentHashBytes])
-        );
+        const leafHashBytes = await computeLeafHashBytes(contentHashBytes);
 
         leafHashes.push(leafHashBytes);
         leaves.push({
@@ -195,8 +155,11 @@ export default function MerkleRootGenerator({ limits }) {
           lastModified: file.lastModified,
         });
 
-        setProgress({ done: i + 1, total: filtered.length });
+        updateProgressThrottled(i + 1, filtered.length);
       }
+
+      // Ensure final progress is shown
+      setProgress({ done: filtered.length, total: filtered.length });
 
       // canonical ordering: leafHash hex asc
       leafHashes.sort((a, b) => (toHex(a) < toHex(b) ? -1 : 1));
@@ -236,6 +199,8 @@ export default function MerkleRootGenerator({ limits }) {
       if (e?.name === "AbortError") return;
       setError(String(e?.message || e));
       setStatus("Idle.");
+    } finally {
+      setIsProcessing(false);
     }
   }
 
@@ -243,6 +208,7 @@ export default function MerkleRootGenerator({ limits }) {
     resetAll();
     if (!hasOpen) return;
 
+    setIsProcessing(true);
     try {
       setStatus("Choosing file…");
       const [handle] = await window.showOpenFilePicker({ multiple: false });
@@ -265,6 +231,8 @@ export default function MerkleRootGenerator({ limits }) {
       if (e?.name === "AbortError") return;
       setError(String(e?.message || e));
       setStatus("Idle.");
+    } finally {
+      setIsProcessing(false);
     }
   }
 
@@ -274,12 +242,20 @@ export default function MerkleRootGenerator({ limits }) {
 
       <div style={card}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button style={button} onClick={chooseFolderAndGenerate} disabled={!hasDir}>
-            Folder → Merkle Tree
+          <button
+            style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
+            onClick={chooseFolderAndGenerate}
+            disabled={!hasDir || isProcessing}
+          >
+            {isProcessing ? "Processing..." : "Folder → Merkle Tree"}
           </button>
 
-          <button style={button} onClick={chooseFileAndHash} disabled={!hasOpen}>
-            Single File → SHA-256
+          <button
+            style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
+            onClick={chooseFileAndHash}
+            disabled={!hasOpen || isProcessing}
+          >
+            {isProcessing ? "Processing..." : "Single File → SHA-256"}
           </button>
         </div>
 
@@ -330,7 +306,7 @@ export default function MerkleRootGenerator({ limits }) {
             <button style={button} onClick={downloadMerkleJson}>
               Download merkle-tree.json
             </button>
-            <button style={button} onClick={() => navigator.clipboard.writeText(root)}>
+            <button style={button} onClick={() => copyToClipboard(root, "Root copied!")}>
               Copy root
             </button>
           </div>
@@ -351,15 +327,50 @@ export default function MerkleRootGenerator({ limits }) {
           <div style={{ marginTop: 8, opacity: 0.8 }}>SHA-256:</div>
           <div style={mono}>{fileHash}</div>
           <div style={{ marginTop: 10 }}>
-            <button style={button} onClick={() => navigator.clipboard.writeText(fileHash)}>
+            <button style={button} onClick={() => copyToClipboard(fileHash, "Hash copied!")}>
               Copy hash
             </button>
           </div>
         </div>
       )}
 
-      {error && <div style={{ marginTop: 10, color: "#ff6b6b" }}>Error: {error}</div>}
-      <div style={{ marginTop: 10, opacity: 0.9 }}>Status: {status}{progress.total ? ` · ${pct}%` : ""}</div>
+      {error && (
+        <div style={{
+          marginTop: 10,
+          padding: 12,
+          background: "rgba(255, 107, 107, 0.1)",
+          border: "1px solid rgba(255, 107, 107, 0.3)",
+          borderRadius: 8,
+          color: "#ff6b6b"
+        }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {copyFeedback && (
+        <div style={{
+          marginTop: 10,
+          padding: 8,
+          background: "rgba(46, 204, 113, 0.1)",
+          border: "1px solid rgba(46, 204, 113, 0.3)",
+          borderRadius: 8,
+          color: "#2ecc71",
+          fontSize: 14
+        }}>
+          ✓ {copyFeedback}
+        </div>
+      )}
+
+      <div style={{
+        marginTop: 10,
+        padding: 8,
+        background: "rgba(255,255,255,0.02)",
+        borderRadius: 8,
+        fontSize: 14,
+        opacity: 0.9
+      }}>
+        Status: {status}{progress.total ? ` · ${pct}%` : ""}
+      </div>
     </div>
   );
 }
@@ -382,6 +393,12 @@ const button = {
   color: "white",
   border: "1px solid rgba(255,255,255,0.12)",
   cursor: "pointer",
+  transition: "all 0.2s ease",
+};
+
+const buttonDisabled = {
+  opacity: 0.5,
+  cursor: "not-allowed",
 };
 
 const row = {
