@@ -2,14 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { humanBytes } from "./lib/merkle.js";
 import OnChainTimestamping from "./components/OnChainTimestamping.jsx";
 
-const DEFAULT_LIMITS = {
-  maxTotalBytes: 500 * 1024 * 1024, // 500 MB
-  maxFileBytes: 100 * 1024 * 1024, // 100 MB
-};
-
 export default function App() {
   const [tab, setTab] = useState("generator");
-  const [limits, setLimits] = useState(DEFAULT_LIMITS);
 
   const [Cmp, setCmp] = useState(null);
   const [loadErr, setLoadErr] = useState("");
@@ -80,29 +74,7 @@ export default function App() {
         {tab === "timestamping" ? (
           <OnChainTimestamping />
         ) : (
-          <>
-            <section style={card}>
-              <div style={sectionTitle}>Limits</div>
-
-              <div style={limitRow}>
-                <LimitInput
-                  label="Max folder size"
-                  bytes={limits.maxTotalBytes}
-                  onBytesChange={(b) => setLimits((l) => ({ ...l, maxTotalBytes: b }))}
-                />
-                <LimitInput
-                  label="Max file size"
-                  bytes={limits.maxFileBytes}
-                  onBytesChange={(b) => setLimits((l) => ({ ...l, maxFileBytes: b }))}
-                />
-              </div>
-
-              <div style={mutedSmall}>
-                Total limit: <b>{humanBytes(limits.maxTotalBytes)}</b> · File limit: <b>{humanBytes(limits.maxFileBytes)}</b>
-              </div>
-            </section>
-
-            <section style={card}>
+          <section style={card}>
               {loading && (
                 <div style={loadingState}>
                   <div style={spinner}></div>
@@ -123,9 +95,8 @@ export default function App() {
                 </div>
               )}
 
-              {!loading && !loadErr && Cmp && <Cmp limits={limits} />}
+              {!loading && !loadErr && Cmp && <Cmp />}
             </section>
-          </>
         )}
       </div>
     </div>

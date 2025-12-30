@@ -64,6 +64,56 @@ export async function sha256Bytes(input) {
 }
 
 /**
+ * Compute SHA-256 hash of a file using incremental streaming (for large files)
+ * Processes file in chunks without accumulating entire file in memory
+ * @param {File} file - File object to hash
+ * @param {Function} [onProgress] - Optional progress callback: (bytesProcessed, totalBytes) => void
+ * @returns {Promise<Uint8Array>} SHA-256 hash as bytes
+ */
+export async function sha256Stream(file, onProgress) {
+  // Use hash-wasm for incremental hashing to avoid memory issues
+  const { createSHA256 } = await import('hash-wasm');
+  const hasher = await createSHA256();
+  
+  const stream = file.stream();
+  const reader = stream.getReader();
+  const totalBytes = file.size;
+  let bytesProcessed = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        // Ensure final progress update shows 100% - always call even if bytesProcessed equals totalBytes
+        // This handles edge cases where the last chunk might not trigger a callback
+        if (onProgress) {
+          onProgress(totalBytes, totalBytes);
+        }
+        break;
+      }
+      
+      // Update hash incrementally with each chunk
+      // This doesn't accumulate the entire file in memory
+      hasher.update(value);
+      
+      // Update progress - accumulate bytes BEFORE calling callback
+      bytesProcessed += value.length;
+      if (onProgress) {
+        // Call progress callback for every chunk to ensure frequent updates
+        onProgress(bytesProcessed, totalBytes);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  // Get final digest as binary (Uint8Array)
+  const digest = hasher.digest('binary');
+  // hash-wasm returns Uint8Array for 'binary' format
+  return digest instanceof Uint8Array ? digest : new Uint8Array(digest);
+}
+
+/**
  * Concatenate multiple byte arrays into one
  * @param {...Uint8Array} parts - Byte arrays to concatenate
  * @returns {Uint8Array} Concatenated bytes
@@ -128,9 +178,18 @@ export function humanBytes(n) {
  * @param {File} file - File object
  * @returns {Promise<string>} Hexadecimal hash (lowercase, no 0x prefix)
  */
+/**
+ * Compute SHA-256 hash of file content
+ * Uses streaming for large files to avoid memory issues
+ * @param {File} file - File object
+ * @returns {Promise<string>} Hexadecimal hash (lowercase, no 0x prefix)
+ */
 export async function computeFileContentHashHex(file) {
-  const bytes = await file.arrayBuffer();
-  const digest = await sha256Bytes(bytes);
+  // Use streaming for large files (>100MB)
+  const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100 MB
+  const digest = file.size > LARGE_FILE_THRESHOLD
+    ? await sha256Stream(file)
+    : await sha256Bytes(await file.arrayBuffer());
   return toHex(digest);
 }
 

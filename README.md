@@ -13,19 +13,25 @@ Create immutable timestamps of your files on Ethereum and Arbitrum blockchains! 
 - **Single File Hashing**: Compute SHA-256 hashes for individual files
 - **Configurable Policies**: Control which files to include/exclude (hidden files, system files, etc.)
 - **JSON Output**: Export complete Merkle tree data for verification
+- **Large File Support**: Stream-based hashing for files of any size without memory limitations
+- **Progress Tracking**: Real-time progress indicators with time estimation for long-running operations
+- **Cancellation**: Stop processing at any time with graceful cancellation handling
 
 ### File Verification
 - **Folder Verification**: Recompute and compare Merkle roots against stored commitments
 - **Single File Proofs**: Verify individual files using Merkle proofs
 - **Policy Consistency**: Ensure verification uses the same filtering rules as generation
 - **Subfolder Verification**: Verify that subfolders are contained within a larger Merkle tree
+- **Large File Support**: Stream-based hashing for verification of files of any size
 
 ### Blockchain Timestamping
 - **On-Chain Commitments**: Commit Merkle roots to Ethereum, Optimism, Arbitrum, and Base blockchains for immutable timestamping
-- **Proof Generation**: Download proof files containing transaction details and verification URLs
+- **Proof Generation**: Download proof files containing transaction details, blockchain metadata, and verification URLs
 - **Network Support**: Works with Ethereum Mainnet, Optimism, Arbitrum One, Base, and local chains
 - **Bidirectional Network Switching**: Automatically syncs network selection between the app and MetaMask
-- **Transaction Status**: Real-time transaction status with pending and confirmed states
+- **Transaction Status**: Real-time transaction status with pending confirmation and confirmed states
+- **Animated Loading Indicators**: Visual feedback during transaction processing
+- **State Management**: Automatic state reset when switching networks
 - **Automatic Verification**: Verify timestamps directly from the proof files
 
 ### Security & Privacy
@@ -33,6 +39,8 @@ Create immutable timestamps of your files on Ethereum and Arbitrum blockchains! 
 - **No Data Transmission**: Files never leave your device
 - **File System API**: Uses modern browser File System Access API
 - **Content-Only Hashing**: Creates deterministic commitments based on file contents only
+- **Memory Efficient**: Streaming hashing for large files prevents memory exhaustion
+- **No Size Limits**: Process folders and files of any size without artificial restrictions
 
 ## Cryptographic Specification
 

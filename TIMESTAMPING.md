@@ -30,13 +30,15 @@ The Merkle root is deterministic - the same files will always produce the same r
 
 When you click "Create Timestamp on [Blockchain Name]":
 
-1. **Your wallet connects** to the selected blockchain (Ethereum Mainnet or Arbitrum One)
+1. **Your wallet connects** to the selected blockchain (Ethereum Mainnet, Optimism, Arbitrum One, or Base)
 2. **A transaction is sent** containing your Merkle root
-3. **Transaction status is tracked** - you'll see "Transaction pending confirmation" while waiting
+3. **Transaction status is tracked** - you'll see "Transaction pending confirmation" with an animated loading indicator while waiting
 4. **The transaction is included in a block** with a specific block number and timestamp
 5. **Transaction is confirmed** - status changes to "Successfully committed"
-6. **You receive a proof file** containing all the details needed to verify the timestamp
+6. **You receive a proof file** containing all the details needed to verify the timestamp, including blockchain name and metadata
 7. **Explorer links become available** - view the transaction and contract on Etherscan, Optimistic Etherscan, Arbiscan, or Basescan
+
+**Network Switching**: The app supports bidirectional network switching - if you change networks in MetaMask, the app updates automatically, and vice versa. When switching networks, the timestamping state is automatically reset to prevent confusion.
 
 ### Step 3: Verification
 
@@ -106,7 +108,7 @@ This application supports multiple networks:
 
 ## Proof File Format
 
-After creating a timestamp, you receive a proof file (e.g., `merkle-proof-20240101-a1b2c3d4.json`) with this structure:
+After creating a timestamp, you receive a proof file (e.g., `merkle-proof-ethereum-20240101-a1b2c3d4.json`) with this structure. The filename includes the blockchain name to prevent conflicts when the same Merkle root is committed to multiple chains:
 
 ```json
 {

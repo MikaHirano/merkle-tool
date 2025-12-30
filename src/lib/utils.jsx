@@ -57,14 +57,58 @@ export function ProgressBar({ done, total }) {
   );
 }
 
+/**
+ * Read file with error handling, using streaming for large files
+ * For files larger than 100MB, uses streaming to avoid memory issues
+ * Note: This function still accumulates chunks for compatibility with existing code
+ * For hashing large files, use sha256Stream from merkle.js instead
+ * @param {File} file - File object to read
+ * @returns {Promise<ArrayBuffer>} File contents as ArrayBuffer
+ */
 export async function readFileWithErrorHandling(file) {
   try {
-    return await file.arrayBuffer();
+    // Use streaming for large files (>100MB) to avoid memory issues
+    const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100 MB
+    
+    if (file.size > LARGE_FILE_THRESHOLD) {
+      // Use streaming approach for large files
+      const stream = file.stream();
+      const reader = stream.getReader();
+      const chunks = [];
+      let totalLength = 0;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          chunks.push(value);
+          totalLength += value.length;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Combine chunks into single ArrayBuffer
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      return combined.buffer;
+    } else {
+      // Use arrayBuffer for smaller files (more efficient)
+      return await file.arrayBuffer();
+    }
   } catch (readError) {
     const errorMsg = readError?.name === 'NotAllowedError'
       ? `Permission denied reading "${file.name}". Please grant file access permission.`
       : readError?.name === 'NotFoundError'
       ? `File "${file.name}" not found or was moved/deleted.`
+      : readError?.message?.includes('Array buffer allocation failed')
+      ? `File "${file.name}" is too large to load into memory (${(file.size / (1024 * 1024 * 1024)).toFixed(2)} GB). Please use a file smaller than 2GB or ensure sufficient system memory.`
       : `Failed to read "${file.name}": ${readError?.message || 'Unknown error'}`;
     throw new Error(errorMsg);
   }

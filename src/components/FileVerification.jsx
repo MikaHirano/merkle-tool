@@ -43,7 +43,7 @@ function buildProof(levels, idx) {
 }
 
 
-export default function FileVerification({ limits }) {
+export default function FileVerification() {
   const hasDir = typeof window !== "undefined" && "showDirectoryPicker" in window;
   const hasOpen = typeof window !== "undefined" && "showOpenFilePicker" in window;
 
@@ -152,23 +152,7 @@ export default function FileVerification({ limits }) {
 
       if (filtered.length === 0) throw new Error("No files left after applying folderPolicy.");
 
-      // limits
       const totalBytes = filtered.reduce((a, p) => a + (p.file.size || 0), 0);
-      const biggest = Math.max(...filtered.map((p) => p.file.size || 0));
-      if (biggest > limits.maxFileBytes) {
-        throw new Error(
-          `Verification blocked: a file exceeds max file size (${humanBytes(limits.maxFileBytes)}). Largest is ${humanBytes(
-            biggest
-          )}.`
-        );
-      }
-      if (totalBytes > limits.maxTotalBytes) {
-        throw new Error(
-          `Verification blocked: folder exceeds max total size (${humanBytes(limits.maxTotalBytes)}). Total is ${humanBytes(
-            totalBytes
-          )}.`
-        );
-      }
 
       setStatus("Hashing files locally…");
       setProgress({ done: 0, total: filtered.length });
@@ -179,8 +163,20 @@ export default function FileVerification({ limits }) {
       
       for (let i = 0; i < filtered.length; i++) {
         const { file, relPath } = filtered[i];
-        const bytes = await readFileWithErrorHandling(file);
-        const contentHashBytes = await sha256Bytes(bytes);
+        
+        // For very large files, use streaming hash directly instead of reading entire file
+        const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100 MB
+        let contentHashBytes;
+        
+        if (file.size > LARGE_FILE_THRESHOLD) {
+          // Use streaming hash for large files (doesn't load entire file into memory)
+          const { sha256Stream } = await import("../lib/merkle.js");
+          contentHashBytes = await sha256Stream(file);
+        } else {
+          // Use regular approach for smaller files
+          const bytes = await readFileWithErrorHandling(file);
+          contentHashBytes = await sha256Bytes(bytes);
+        }
         const contentHashHex = toHex(contentHashBytes).toLowerCase();
         const leafHashBytes = await computeLeafHashBytes(contentHashBytes);
         
@@ -323,15 +319,24 @@ export default function FileVerification({ limits }) {
       const [handle] = await window.showOpenFilePicker({ multiple: false });
       const file = await handle.getFile();
 
-      if (file.size > limits.maxFileBytes) {
-        throw new Error(`File exceeds max file size (${humanBytes(limits.maxFileBytes)}).`);
-      }
 
       setStatus("Hashing file locally…");
-      const bytes = await readFileWithErrorHandling(file);
+      
+      // For very large files, use streaming hash directly instead of reading entire file
+      const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100 MB
+      let contentHashBytes;
+      
+      if (file.size > LARGE_FILE_THRESHOLD) {
+        // Use streaming hash for large files (doesn't load entire file into memory)
+        const { sha256Stream } = await import("../lib/merkle.js");
+        contentHashBytes = await sha256Stream(file);
+      } else {
+        // Use regular approach for smaller files
+        const bytes = await readFileWithErrorHandling(file);
+        contentHashBytes = await sha256Bytes(bytes);
+      }
 
       const enc = new TextEncoder();
-      const contentHashBytes = await sha256Bytes(bytes);
       const contentHashHex = toHex(contentHashBytes).toLowerCase();
 
       const leafHashBytes = await computeLeafHashBytes(contentHashBytes);

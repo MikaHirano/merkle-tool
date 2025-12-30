@@ -27,7 +27,7 @@ import { getErrorMessage, logError } from "../lib/errorHandler.js";
 // Use default policy from constants
 const DEFAULT_POLICY = DEFAULT_FOLDER_POLICY;
 
-export default function MerkleRootGenerator({ limits }) {
+export default function MerkleRootGenerator() {
   const hasDir = typeof window !== "undefined" && "showDirectoryPicker" in window;
   const hasOpen = typeof window !== "undefined" && "showOpenFilePicker" in window;
 
@@ -39,6 +39,22 @@ export default function MerkleRootGenerator({ limits }) {
   const [copyFeedback, setCopyFeedback] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const lastProgressUpdate = useRef(0);
+  const [currentFile, setCurrentFile] = useState(null);
+  const [currentFileProgress, setCurrentFileProgress] = useState({
+    bytesProcessed: 0,
+    totalBytes: 0
+  });
+  const abortControllerRef = useRef(null);
+  const [isStopping, setIsStopping] = useState(false);
+  
+  // Time estimation state
+  const [processingStartTime, setProcessingStartTime] = useState(null);
+  const [bytesProcessed, setBytesProcessed] = useState(0);
+  const [totalBytesToProcess, setTotalBytesToProcess] = useState(0);
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(null);
+  const processingSpeedRef = useRef(null); // bytes/second (exponential moving average)
+  const lastSpeedUpdateTime = useRef(null);
+  const lastBytesProcessed = useRef(0);
 
   const updateProgressThrottled = useCallback((done, total) => {
     const now = Date.now();
@@ -62,10 +78,75 @@ export default function MerkleRootGenerator({ limits }) {
     [progress]
   );
 
+  // Format time remaining for display
+  function formatTimeRemaining(seconds) {
+    if (seconds < 5) return "< 5 sec";
+    if (seconds < 60) return `~${Math.round(seconds)} sec`;
+    if (seconds < 3600) {
+      const minutes = Math.round(seconds / 60);
+      return `~${minutes} min`;
+    }
+    const hours = Math.round(seconds / 3600);
+    return `~${hours} hr`;
+  }
+
+  // Update time estimation based on current progress
+  function updateTimeEstimation(currentBytesProcessed, totalBytes) {
+    const now = Date.now();
+    
+    // Initialize start time if not set
+    if (!processingStartTime) {
+      setProcessingStartTime(now);
+      lastSpeedUpdateTime.current = now;
+      lastBytesProcessed.current = currentBytesProcessed;
+      return;
+    }
+
+    // Don't estimate until at least 1 second has passed
+    const elapsedSeconds = (now - processingStartTime) / 1000;
+    if (elapsedSeconds < 1) {
+      return;
+    }
+
+    // Calculate current speed (bytes per second)
+    const timeSinceLastUpdate = (now - lastSpeedUpdateTime.current) / 1000;
+    if (timeSinceLastUpdate >= 0.5) { // Update speed every 500ms
+      const bytesSinceLastUpdate = currentBytesProcessed - lastBytesProcessed.current;
+      const currentSpeed = bytesSinceLastUpdate / timeSinceLastUpdate;
+      
+      // Exponential moving average (alpha = 0.3)
+      const alpha = 0.3;
+      if (processingSpeedRef.current === null) {
+        processingSpeedRef.current = currentSpeed;
+      } else {
+        processingSpeedRef.current = alpha * currentSpeed + (1 - alpha) * processingSpeedRef.current;
+      }
+      
+      lastSpeedUpdateTime.current = now;
+      lastBytesProcessed.current = currentBytesProcessed;
+    }
+
+    // Calculate estimated time remaining
+    if (processingSpeedRef.current && processingSpeedRef.current > 0) {
+      const remainingBytes = totalBytes - currentBytesProcessed;
+      const estimatedSeconds = remainingBytes / processingSpeedRef.current;
+      setEstimatedTimeRemaining(formatTimeRemaining(estimatedSeconds));
+    }
+  }
+
   function resetAll() {
+    // Cancel any ongoing processing
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
     setError("");
     setStatus("Idle.");
     setProgress({ done: 0, total: 0 });
+    setCurrentFile(null);
+    setCurrentFileProgress({ bytesProcessed: 0, totalBytes: 0 });
+    setIsStopping(false);
 
     setRoot("");
     setJson(null);
@@ -73,6 +154,13 @@ export default function MerkleRootGenerator({ limits }) {
     setFileHash("");
     setFileName("");
     setFileSize(0);
+  }
+
+  function cancelProcessing() {
+    setIsStopping(true);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
   }
 
   async function copyToClipboard(text, successMessage = "Copied!") {
@@ -101,33 +189,37 @@ export default function MerkleRootGenerator({ limits }) {
     resetAll();
     if (!hasDir) return;
 
+    // Create new AbortController for this operation
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
     setIsProcessing(true);
     try {
-      setStatus("Requesting folder permission…");
+      setStatus("Selecting folder…");
       const dir = await window.showDirectoryPicker();
 
-      setStatus("Scanning folder…");
+      if (signal.aborted) {
+        throw new Error("Processing cancelled");
+      }
+
+      setStatus("Scanning files…");
       const pairs = await listFilesFromDirectoryHandle(dir);
 
       // apply policy
       const filtered = pairs.filter((p) => !shouldIgnoreRelPath(p.relPath, policy));
       if (filtered.length === 0) throw new Error("No files left after applying Folder Policy.");
 
-      // limits
       const totalBytes = filtered.reduce((a, p) => a + (p.file.size || 0), 0);
-      const biggest = Math.max(...filtered.map((p) => p.file.size || 0));
-      if (biggest > limits.maxFileBytes) {
-        throw new Error(
-          `A file exceeds max file size (${humanBytes(limits.maxFileBytes)}). Largest is ${humanBytes(biggest)}.`
-        );
-      }
-      if (totalBytes > limits.maxTotalBytes) {
-        throw new Error(
-          `Folder exceeds max total size (${humanBytes(limits.maxTotalBytes)}). Total is ${humanBytes(totalBytes)}.`
-        );
-      }
+      
+      // Initialize time estimation for folder processing
+      setTotalBytesToProcess(totalBytes);
+      setBytesProcessed(0);
+      setProcessingStartTime(Date.now());
+      processingSpeedRef.current = null;
+      lastSpeedUpdateTime.current = null;
+      lastBytesProcessed.current = 0;
 
-      setStatus("Hashing files locally (SHA-256)…");
+      setStatus("Computing file hashes…");
       setProgress({ done: 0, total: filtered.length });
 
       const enc = new TextEncoder();
@@ -135,11 +227,76 @@ export default function MerkleRootGenerator({ limits }) {
       const leaves = [];
 
       for (let i = 0; i < filtered.length; i++) {
-        const { file } = filtered[i];
+        // Check for cancellation
+        if (signal.aborted) {
+          throw new Error("Processing cancelled");
+        }
 
-        const bytes = await readFileWithErrorHandling(file);
-
-        const contentHashBytes = await sha256Bytes(bytes);
+        const { file, relPath } = filtered[i];
+        
+        // Update progress BEFORE processing to show current file being processed
+        updateProgressThrottled(i + 1, filtered.length);
+        
+        // For very large files, use streaming hash directly instead of reading entire file
+        const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100 MB
+        const SHOW_PROGRESS_THRESHOLD = 50 * 1024 * 1024; // 50 MB - show progress for files larger than this
+        let contentHashBytes;
+        
+        if (file.size > LARGE_FILE_THRESHOLD) {
+          // Use streaming hash for large files (doesn't load entire file into memory)
+          const { sha256Stream } = await import("../lib/merkle.js");
+          
+          // Set up per-file progress tracking for large files
+          if (file.size > SHOW_PROGRESS_THRESHOLD) {
+            setCurrentFile(relPath);
+            setCurrentFileProgress({ bytesProcessed: 0, totalBytes: file.size });
+          }
+          
+          contentHashBytes = await sha256Stream(file, (bytesProcessed, totalBytes) => {
+            if (file.size > SHOW_PROGRESS_THRESHOLD) {
+              // Use functional state update to ensure we always have the latest values
+              setCurrentFileProgress(prev => ({
+                ...prev,
+                bytesProcessed,
+                totalBytes
+              }));
+            }
+            
+            // Update time estimation for folder processing
+            // Calculate total bytes processed so far: sum of completed files + current file progress
+            const completedFilesBytes = filtered.slice(0, i).reduce((sum, p) => sum + (p.file.size || 0), 0);
+            const totalBytesProcessed = completedFilesBytes + bytesProcessed;
+            setBytesProcessed(totalBytesProcessed);
+            // Use the totalBytes variable from the outer scope, not state
+            updateTimeEstimation(totalBytesProcessed, totalBytes);
+          });
+          
+          // Final progress update should already be at 100% from sha256Stream callback
+          // But ensure it's set correctly before clearing
+          if (file.size > SHOW_PROGRESS_THRESHOLD) {
+            // Ensure final state shows 100% using functional update
+            setCurrentFileProgress(prev => ({
+              ...prev,
+              bytesProcessed: file.size,
+              totalBytes: file.size
+            }));
+            // Small delay to show 100% before clearing
+            await new Promise(resolve => setTimeout(resolve, 150));
+            setCurrentFile(null);
+            setCurrentFileProgress({ bytesProcessed: 0, totalBytes: 0 });
+          }
+        } else {
+          // Use regular approach for smaller files
+          const bytes = await readFileWithErrorHandling(file);
+          contentHashBytes = await sha256Bytes(bytes);
+          
+          // Update time estimation after file is processed
+          const completedFilesBytes = filtered.slice(0, i + 1).reduce((sum, p) => sum + (p.file.size || 0), 0);
+          setBytesProcessed(completedFilesBytes);
+          // Use the totalBytes variable from the outer scope, not state
+          updateTimeEstimation(completedFilesBytes, totalBytes);
+        }
+        
         const contentHashHex = toHex(contentHashBytes);
 
         const leafHashBytes = await computeLeafHashBytes(contentHashBytes);
@@ -151,8 +308,6 @@ export default function MerkleRootGenerator({ limits }) {
           size: file.size,
           lastModified: file.lastModified,
         });
-
-        updateProgressThrottled(i + 1, filtered.length);
       }
 
       // Ensure final progress is shown
@@ -171,7 +326,6 @@ export default function MerkleRootGenerator({ limits }) {
         generatedAt: new Date().toISOString(),
         algorithm: "SHA-256",
         folderPolicy: policy,
-        limits,
         canonicalization: {
           contentHash: "SHA256(fileBytes)",
           leaf: 'SHA256("leaf\\0" + contentHashBytes)',
@@ -193,12 +347,19 @@ export default function MerkleRootGenerator({ limits }) {
       setJson(out);
       setStatus("Done.");
     } catch (e) {
-      if (e?.name === "AbortError") return;
-      logError(e, "MerkleRootGenerator.chooseFolderAndGenerate");
-      setError(getErrorMessage(e));
-      setStatus("Idle.");
+      const errorMsg = getErrorMessage(e);
+      if (errorMsg.includes("cancelled") || errorMsg.includes("Cancelled") || e?.name === "AbortError") {
+        setStatus("Cancelled.");
+        setError("");
+      } else {
+        logError(e, "MerkleRootGenerator.chooseFolderAndGenerate");
+        setError(errorMsg);
+        setStatus("Idle.");
+      }
     } finally {
       setIsProcessing(false);
+      setIsStopping(false);
+      abortControllerRef.current = null;
     }
   }
 
@@ -212,17 +373,44 @@ export default function MerkleRootGenerator({ limits }) {
       const [handle] = await window.showOpenFilePicker({ multiple: false });
       const f = await handle.getFile();
 
-      setStatus("Hashing file locally (SHA-256)…");
+      setStatus("Computing hash…");
       setFileName(f.name);
       setFileSize(f.size);
+      
+      // Initialize time estimation for single file processing
+      setTotalBytesToProcess(f.size);
+      setBytesProcessed(0);
+      setProcessingStartTime(Date.now());
+      processingSpeedRef.current = null;
+      lastSpeedUpdateTime.current = null;
+      lastBytesProcessed.current = 0;
 
-      if (f.size > limits.maxFileBytes) {
-        throw new Error(
-          `File exceeds max file size (${humanBytes(limits.maxFileBytes)}). File is ${humanBytes(f.size)}.`
-        );
+      // For large files, use streaming with progress tracking
+      const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100 MB
+      let hex;
+      
+      if (f.size > LARGE_FILE_THRESHOLD) {
+        // Use streaming hash for large files with progress tracking
+        const { sha256Stream } = await import("../lib/merkle.js");
+        setCurrentFile(f.name);
+        setCurrentFileProgress({ bytesProcessed: 0, totalBytes: f.size });
+        
+        const digest = await sha256Stream(f, (bytesProcessed, totalBytes) => {
+          setCurrentFileProgress({ bytesProcessed, totalBytes });
+          setBytesProcessed(bytesProcessed);
+          updateTimeEstimation(bytesProcessed, totalBytes);
+        });
+        
+        hex = toHex(digest);
+        setCurrentFile(null);
+        setCurrentFileProgress({ bytesProcessed: 0, totalBytes: 0 });
+      } else {
+        // For small files, process directly (too fast to track progress meaningfully)
+        hex = await computeFileContentHashHex(f);
+        // Update time estimation after completion
+        setBytesProcessed(f.size);
+        updateTimeEstimation(f.size, f.size);
       }
-
-      const hex = await computeFileContentHashHex(f);
       setFileHash(hex);
       setStatus("Done.");
     } catch (e) {
@@ -232,6 +420,8 @@ export default function MerkleRootGenerator({ limits }) {
       setStatus("Idle.");
     } finally {
       setIsProcessing(false);
+      setIsStopping(false);
+      abortControllerRef.current = null;
     }
   }
 
@@ -297,7 +487,85 @@ export default function MerkleRootGenerator({ limits }) {
         </div>
       </div>
 
-      {progress.total > 0 && <ProgressBar done={progress.done} total={progress.total} />}
+      {progress.total > 0 && (
+        <div>
+          <ProgressBar done={progress.done} total={progress.total} />
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>
+              Hashing file {progress.done} of {progress.total}
+              {estimatedTimeRemaining && (
+                <span style={{ marginLeft: 8, opacity: 0.8 }}>· {estimatedTimeRemaining} remaining</span>
+              )}
+            </span>
+            {isProcessing && (
+              <button
+                onClick={cancelProcessing}
+                style={isStopping ? cancelButtonDisabled : cancelButton}
+                aria-label="Stop processing"
+                disabled={isStopping}
+                onMouseEnter={(e) => {
+                  if (!isStopping) {
+                    e.target.style.background = "rgba(255, 107, 107, 0.2)";
+                    e.target.style.borderColor = "rgba(255, 107, 107, 0.5)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isStopping) {
+                    e.target.style.background = "rgba(255, 107, 107, 0.1)";
+                    e.target.style.borderColor = "rgba(255, 107, 107, 0.3)";
+                  }
+                }}
+              >
+                {isStopping ? "Stopping Processing" : "Stop Processing"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isProcessing && progress.total === 0 && (
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={cancelProcessing}
+            style={isStopping ? cancelButtonDisabled : cancelButton}
+            aria-label="Stop processing"
+            disabled={isStopping}
+            onMouseEnter={(e) => {
+              if (!isStopping) {
+                e.target.style.background = "rgba(255, 107, 107, 0.2)";
+                e.target.style.borderColor = "rgba(255, 107, 107, 0.5)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isStopping) {
+                e.target.style.background = "rgba(255, 107, 107, 0.1)";
+                e.target.style.borderColor = "rgba(255, 107, 107, 0.3)";
+              }
+            }}
+          >
+            {isStopping ? "Stopping Processing" : "Stop Processing"}
+          </button>
+        </div>
+      )}
+
+      {/* Per-file progress indicator for large files */}
+      {currentFile && currentFileProgress.totalBytes > 0 && (
+        <div style={fileProgressContainer}>
+          <div style={fileProgressHeader}>
+            <div style={fileProgressSpinner}></div>
+            <span style={fileProgressLabel}>Hashing:</span>
+            <span style={fileProgressFileName} title={currentFile}>
+              {currentFile.length > 60 ? currentFile.substring(0, 57) + '...' : currentFile}
+            </span>
+          </div>
+          <div style={fileProgressInfo}>
+            {humanBytes(currentFileProgress.bytesProcessed)} / {humanBytes(currentFileProgress.totalBytes)} · {currentFileProgress.totalBytes > 0 ? Math.round((currentFileProgress.bytesProcessed / currentFileProgress.totalBytes) * 100) : 0}%
+            {estimatedTimeRemaining && (
+              <span style={{ marginLeft: 8 }}>· {estimatedTimeRemaining} remaining</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {json && (
         <div style={card}>
@@ -382,12 +650,34 @@ export default function MerkleRootGenerator({ limits }) {
         background: "rgba(255,255,255,0.02)",
         borderRadius: 8,
         fontSize: 14,
-        opacity: 0.9
+        opacity: 0.9,
+        display: "flex",
+        alignItems: "center",
+        gap: 8
       }}>
+        {status.includes("Scanning") && (
+          <div style={scanningSpinner}></div>
+        )}
         Status: {status}{progress.total ? ` · ${pct}%` : ""}
+        {estimatedTimeRemaining && !progress.total && (
+          <span style={{ marginLeft: 8, opacity: 0.8 }}>· {estimatedTimeRemaining} remaining</span>
+        )}
       </div>
     </div>
   );
+}
+
+// Add CSS animations for spinner
+if (typeof document !== "undefined" && !document.getElementById('merkle-file-progress-animations')) {
+  const styleSheet = document.createElement("style");
+  styleSheet.id = 'merkle-file-progress-animations';
+  styleSheet.textContent = `
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  `;
+  document.head.appendChild(styleSheet);
 }
 
 /** ---------------- styles ---------------- **/
@@ -468,4 +758,102 @@ const barFill = {
   height: "100%",
   borderRadius: 999,
   background: "rgba(255,255,255,0.85)",
+};
+
+const fileProgressContainer = {
+  marginTop: 12,
+  padding: 12,
+  background: "rgba(255,255,255,0.03)",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.06)",
+};
+
+const fileProgressHeader = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  marginBottom: 6,
+  fontSize: 12,
+};
+
+const fileProgressSpinner = {
+  width: 12,
+  height: 12,
+  border: "2px solid rgba(102, 126, 234, 0.3)",
+  borderTopColor: "rgba(102, 126, 234, 1)",
+  borderRadius: "50%",
+  animation: "spin 1s linear infinite",
+  flexShrink: 0,
+};
+
+const fileProgressLabel = {
+  opacity: 0.7,
+  fontWeight: 500,
+  flexShrink: 0,
+};
+
+const fileProgressFileName = {
+  flex: 1,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontSize: 11,
+  opacity: 0.9,
+};
+
+const fileProgressInfo = {
+  fontSize: 11,
+  opacity: 0.8,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  marginBottom: 6,
+};
+
+const fileProgressBarContainer = {
+  marginTop: 4,
+};
+
+const fileProgressBar = {
+  width: "100%",
+  height: 6,
+  borderRadius: 3,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.06)",
+  overflow: "hidden",
+};
+
+const fileProgressBarFill = {
+  height: "100%",
+  background: "linear-gradient(90deg, rgba(102, 126, 234, 0.8), rgba(102, 126, 234, 1))",
+  transition: "width 0.2s ease",
+  borderRadius: 3,
+};
+
+const scanningSpinner = {
+  width: 14,
+  height: 14,
+  border: "2px solid rgba(255, 255, 255, 0.3)",
+  borderTopColor: "rgba(255, 255, 255, 0.9)",
+  borderRadius: "50%",
+  animation: "spin 1s linear infinite",
+  flexShrink: 0,
+};
+
+const cancelButton = {
+  padding: "6px 12px",
+  borderRadius: 8,
+  background: "rgba(255, 107, 107, 0.1)",
+  color: "#ff6b6b",
+  border: "1px solid rgba(255, 107, 107, 0.3)",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 500,
+  transition: "all 0.2s ease",
+  outline: "none",
+};
+
+const cancelButtonDisabled = {
+  ...cancelButton,
+  opacity: 0.6,
+  cursor: "not-allowed",
 };
