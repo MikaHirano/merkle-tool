@@ -1,3 +1,8 @@
+/**
+ * Normalize relative path (convert backslashes, remove leading ./ and duplicate slashes)
+ * @param {string} p - Path to normalize
+ * @returns {string} Normalized path
+ */
 export function normalizeRelPath(p) {
   return String(p)
     .replace(/\\/g, "/")
@@ -5,12 +10,22 @@ export function normalizeRelPath(p) {
     .replace(/\/{2,}/g, "/");
 }
 
+/**
+ * Check if a path is hidden (contains segments starting with ".")
+ * @param {string} relPath - Relative path to check
+ * @returns {boolean} True if path is hidden
+ */
 export function isHiddenPath(relPath) {
   return normalizeRelPath(relPath)
     .split("/")
     .some((seg) => seg.startsWith("."));
 }
 
+/**
+ * Recursively list all files from a directory handle
+ * @param {FileSystemDirectoryHandle} dirHandle - Directory handle
+ * @returns {Promise<Array<{file: File, relPath: string}>>} Array of file objects with relative paths
+ */
 export async function listFilesFromDirectoryHandle(dirHandle) {
   const out = [];
 
@@ -33,6 +48,11 @@ export async function listFilesFromDirectoryHandle(dirHandle) {
   return out;
 }
 
+/**
+ * Compute SHA-256 hash of input bytes
+ * @param {ArrayBuffer|Uint8Array|TypedArray} input - Input data
+ * @returns {Promise<Uint8Array>} SHA-256 hash as bytes
+ */
 export async function sha256Bytes(input) {
   const data = input instanceof ArrayBuffer
     ? input
@@ -43,6 +63,11 @@ export async function sha256Bytes(input) {
   return new Uint8Array(digest);
 }
 
+/**
+ * Concatenate multiple byte arrays into one
+ * @param {...Uint8Array} parts - Byte arrays to concatenate
+ * @returns {Uint8Array} Concatenated bytes
+ */
 export function concatBytes(...parts) {
   const total = parts.reduce((sum, p) => sum + p.length, 0);
   const out = new Uint8Array(total);
@@ -54,10 +79,21 @@ export function concatBytes(...parts) {
   return out;
 }
 
+/**
+ * Convert bytes to hexadecimal string
+ * @param {Uint8Array} bytes - Bytes to convert
+ * @returns {string} Hexadecimal string (lowercase, no 0x prefix)
+ */
 export function toHex(bytes) {
   return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Convert hexadecimal string to bytes
+ * @param {string} hex - Hexadecimal string (with or without 0x prefix)
+ * @returns {Uint8Array} Bytes
+ * @throws {Error} If hex string is invalid
+ */
 export function hexToBytes(hex) {
   const clean = String(hex || "").startsWith("0x") ? String(hex).slice(2) : String(hex || "");
   if (clean.length % 2 !== 0) throw new Error("Invalid hex length");
@@ -70,6 +106,11 @@ export function hexToBytes(hex) {
   return out;
 }
 
+/**
+ * Format bytes as human-readable string (B, KB, MB, GB, TB)
+ * @param {number} n - Number of bytes
+ * @returns {string} Formatted string (e.g., "1.5 MB")
+ */
 export function humanBytes(n) {
   if (!Number.isFinite(n)) return "";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -82,17 +123,34 @@ export function humanBytes(n) {
   return `${v.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
 }
 
+/**
+ * Compute SHA-256 hash of file content
+ * @param {File} file - File object
+ * @returns {Promise<string>} Hexadecimal hash (lowercase, no 0x prefix)
+ */
 export async function computeFileContentHashHex(file) {
   const bytes = await file.arrayBuffer();
   const digest = await sha256Bytes(bytes);
   return toHex(digest);
 }
 
+/**
+ * Compute leaf hash: SHA256("leaf\0" + contentHashBytes)
+ * @param {Uint8Array} contentHashBytes - Content hash bytes
+ * @returns {Promise<Uint8Array>} Leaf hash bytes
+ */
 export async function computeLeafHashBytes(contentHashBytes) {
   const enc = new TextEncoder();
   return sha256Bytes(concatBytes(enc.encode("leaf\0"), contentHashBytes));
 }
 
+/**
+ * Build Merkle tree from leaf hashes
+ * Uses SHA256("node\0" + left + right) for internal nodes
+ * @param {Array<Uint8Array>} leafHashesBytes - Array of leaf hash bytes
+ * @returns {Promise<{root: Uint8Array, levels: Array<Array<Uint8Array>>}>} Root hash and all tree levels
+ * @throws {Error} If no leaves provided
+ */
 export async function buildMerkleTreeFromLeafHashes(leafHashesBytes) {
   if (!Array.isArray(leafHashesBytes) || leafHashesBytes.length === 0) {
     throw new Error("Cannot build Merkle tree with 0 leaves.");
@@ -118,6 +176,12 @@ export async function buildMerkleTreeFromLeafHashes(leafHashesBytes) {
   return { root: levels[levels.length - 1][0], levels };
 }
 
+/**
+ * Build Merkle proof from tree levels for a given leaf index
+ * @param {Array<Array<Uint8Array>>} levelsBytes - Tree levels (array of arrays of hash bytes)
+ * @param {number} leafIndex - Index of the leaf in the first level
+ * @returns {Array<{position: "left"|"right", hash: string}>} Proof steps (sibling hashes)
+ */
 export function buildProofFromLevels(levelsBytes, leafIndex) {
   const proof = [];
   let idx = leafIndex;
@@ -139,6 +203,13 @@ export function buildProofFromLevels(levelsBytes, leafIndex) {
   return proof;
 }
 
+/**
+ * Compute Merkle root from leaf hash and proof steps
+ * @param {Uint8Array} leafHashBytes - Leaf hash bytes
+ * @param {Array<{position: "left"|"right", hash: string}>} proofSteps - Proof steps
+ * @returns {Promise<Uint8Array>} Computed root hash bytes
+ * @throws {Error} If proof step position is invalid
+ */
 export async function computeRootFromProof(leafHashBytes, proofSteps) {
   const nodePrefix = new TextEncoder().encode("node\0");
   let running = leafHashBytes;
@@ -158,6 +229,11 @@ export async function computeRootFromProof(leafHashBytes, proofSteps) {
   return running;
 }
 
+/**
+ * Check if a hex string is a valid 256-bit (32-byte) hash
+ * @param {string} hex - Hexadecimal string (with or without 0x prefix)
+ * @returns {boolean} True if valid 256-bit hash
+ */
 export function isHex256(hex) {
   if (typeof hex !== "string") return false;
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex;

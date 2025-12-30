@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { humanBytes } from "./lib/merkle.js";
+import OnChainTimestamping from "./components/OnChainTimestamping.jsx";
 
 const DEFAULT_LIMITS = {
   maxTotalBytes: 500 * 1024 * 1024, // 500 MB
@@ -18,6 +19,14 @@ export default function App() {
     let alive = true;
 
     async function load() {
+      // On-Chain Timestamping doesn't need dynamic loading
+      if (tab === "timestamping") {
+        setLoading(false);
+        setLoadErr("");
+        setCmp(null);
+        return;
+      }
+
       setLoading(true);
       setLoadErr("");
       setCmp(null);
@@ -60,55 +69,64 @@ export default function App() {
           </div>
 
           <nav style={tabBar} aria-label="Tabs">
-            <Tab label="Generator" active={tab === "generator"} onClick={() => setTab("generator")} />
-            <Tab label="Verification" active={tab === "verify"} onClick={() => setTab("verify")} />
+            <div style={{ display: "flex", gap: 18 }}>
+              <Tab label="Generator" active={tab === "generator"} onClick={() => setTab("generator")} />
+              <Tab label="Verification" active={tab === "verify"} onClick={() => setTab("verify")} />
+            </div>
+            <Tab label="On-Chain Timestamping" active={tab === "timestamping"} onClick={() => setTab("timestamping")} />
           </nav>
         </header>
 
-        <section style={card}>
-          <div style={sectionTitle}>Limits</div>
+        {tab === "timestamping" ? (
+          <OnChainTimestamping />
+        ) : (
+          <>
+            <section style={card}>
+              <div style={sectionTitle}>Limits</div>
 
-          <div style={limitRow}>
-            <LimitInput
-              label="Max folder size"
-              bytes={limits.maxTotalBytes}
-              onBytesChange={(b) => setLimits((l) => ({ ...l, maxTotalBytes: b }))}
-            />
-            <LimitInput
-              label="Max file size"
-              bytes={limits.maxFileBytes}
-              onBytesChange={(b) => setLimits((l) => ({ ...l, maxFileBytes: b }))}
-            />
-          </div>
-
-          <div style={mutedSmall}>
-            Total limit: <b>{humanBytes(limits.maxTotalBytes)}</b> · File limit: <b>{humanBytes(limits.maxFileBytes)}</b>
-          </div>
-        </section>
-
-        <section style={card}>
-          {loading && (
-            <div style={loadingState}>
-              <div style={spinner}></div>
-              <div>Loading component...</div>
-            </div>
-          )}
-
-          {!loading && loadErr && (
-            <div style={errorState}>
-              <div style={{ fontSize: 18, marginBottom: 8 }}>⚠️ Component Load Error</div>
-              <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 12 }}>
-                Failed to load the requested component. This might be due to a network issue or browser compatibility.
+              <div style={limitRow}>
+                <LimitInput
+                  label="Max folder size"
+                  bytes={limits.maxTotalBytes}
+                  onBytesChange={(b) => setLimits((l) => ({ ...l, maxTotalBytes: b }))}
+                />
+                <LimitInput
+                  label="Max file size"
+                  bytes={limits.maxFileBytes}
+                  onBytesChange={(b) => setLimits((l) => ({ ...l, maxFileBytes: b }))}
+                />
               </div>
-              <details style={{ fontSize: 12 }}>
-                <summary style={{ cursor: "pointer", opacity: 0.7 }}>Technical details</summary>
-                <pre style={{ ...errorBox, marginTop: 8 }}>{loadErr}</pre>
-              </details>
-            </div>
-          )}
 
-          {!loading && !loadErr && Cmp && <Cmp limits={limits} />}
-        </section>
+              <div style={mutedSmall}>
+                Total limit: <b>{humanBytes(limits.maxTotalBytes)}</b> · File limit: <b>{humanBytes(limits.maxFileBytes)}</b>
+              </div>
+            </section>
+
+            <section style={card}>
+              {loading && (
+                <div style={loadingState}>
+                  <div style={spinner}></div>
+                  <div>Loading component...</div>
+                </div>
+              )}
+
+              {!loading && loadErr && (
+                <div style={errorState}>
+                  <div style={{ fontSize: 18, marginBottom: 8 }}>⚠️ Component Load Error</div>
+                  <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 12 }}>
+                    Failed to load the requested component. This might be due to a network issue or browser compatibility.
+                  </div>
+                  <details style={{ fontSize: 12 }}>
+                    <summary style={{ cursor: "pointer", opacity: 0.7 }}>Technical details</summary>
+                    <pre style={{ ...errorBox, marginTop: 8 }}>{loadErr}</pre>
+                  </details>
+                </div>
+              )}
+
+              {!loading && !loadErr && Cmp && <Cmp limits={limits} />}
+            </section>
+          </>
+        )}
       </div>
     </div>
   );
@@ -117,6 +135,8 @@ export default function App() {
 /* ---------- small helpers ---------- */
 
 function Tab({ label, active, onClick }) {
+  const isTimestampingTab = label === "On-Chain Timestamping";
+  
   return (
     <button
       role="tab"
@@ -124,7 +144,10 @@ function Tab({ label, active, onClick }) {
       onClick={onClick}
       style={{
         ...tabBtn,
-        ...(active ? tabBtnActive : {}),
+        ...(isTimestampingTab 
+          ? (active ? tabBtnActivePurple : tabBtnPurple)
+          : (active ? tabBtnActive : {})
+        ),
       }}
     >
       {label}
@@ -191,7 +214,7 @@ if (typeof document !== "undefined") {
 
 const shell = {
   width: "100%",
-  maxWidth: 720,
+  maxWidth: 1180,
   margin: "0 auto",
   filter: "drop-shadow(0 20px 60px rgba(0,0,0,0.55))",
 };
@@ -223,6 +246,8 @@ const tagline = {
 const tabBar = {
   marginTop: 14,
   display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
   gap: 18,
   borderBottom: "1px solid #242424",
 };
@@ -243,6 +268,20 @@ const tabBtnActive = {
   background: "rgba(255,255,255,0.02)",
 };
 
+const tabBtnPurple = {
+  color: "#a78bfa",
+  border: "1px solid rgba(102, 126, 234, 0.2)",
+  background: "rgba(102, 126, 234, 0.08)",
+};
+
+const tabBtnActivePurple = {
+  color: "#ffffff",
+  border: "1px solid rgba(102, 126, 234, 0.4)",
+  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  boxShadow: "0 4px 12px rgba(102, 126, 234, 0.4)",
+  transform: "translateY(-1px)",
+};
+
 const card = {
   marginTop: 16,
   background: "linear-gradient(180deg, #151516 0%, #111112 100%)",
@@ -251,6 +290,24 @@ const card = {
   padding: 16,
   boxShadow:
     "0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)",
+};
+
+const layout = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.9fr) minmax(280px, 360px)",
+  gap: 14,
+  alignItems: "start",
+};
+
+const mainColumn = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 0,
+};
+
+const sideColumn = {
+  position: "sticky",
+  top: 24,
 };
 
 const sectionTitle = {

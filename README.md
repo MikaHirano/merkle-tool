@@ -1,6 +1,10 @@
 # Merkle Tool
 
-A web-based tool for generating and verifying Merkle trees from files and folders using SHA-256 cryptographic hashing. Built with React and Vite, this tool provides local-only, client-side processing for secure file integrity verification.
+A web-based tool for generating and verifying Merkle trees from files and folders using SHA-256 cryptographic hashing. Built with React and Vite, this tool provides local-only, client-side processing for secure file integrity verification and **blockchain timestamping** on Arbitrum.
+
+## 🆕 Blockchain Timestamping
+
+Create immutable timestamps of your files on the Arbitrum blockchain! This feature is inspired by [OpenTimestamps](https://opentimestamps.org/) and allows you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
 
 ## Features
 
@@ -14,6 +18,13 @@ A web-based tool for generating and verifying Merkle trees from files and folder
 - **Folder Verification**: Recompute and compare Merkle roots against stored commitments
 - **Single File Proofs**: Verify individual files using Merkle proofs
 - **Policy Consistency**: Ensure verification uses the same filtering rules as generation
+- **Subfolder Verification**: Verify that subfolders are contained within a larger Merkle tree
+
+### Blockchain Timestamping
+- **On-Chain Commitments**: Commit Merkle roots to Arbitrum blockchain for immutable timestamping
+- **Proof Generation**: Download proof files containing transaction details and verification URLs
+- **Network Support**: Works with Arbitrum One (mainnet), Arbitrum Sepolia (testnet), and local chains
+- **Automatic Verification**: Verify timestamps directly from the proof files
 
 ### Security & Privacy
 - **Local Processing**: All cryptographic operations happen client-side
@@ -56,6 +67,16 @@ Requires browsers with File System Access API support:
 2. Use "Verify Folder" to check entire directory integrity
 3. Use "Verify Single File" to check individual files
 
+### Creating Blockchain Timestamps
+1. Go to the "On-Chain Timestamping" tab
+2. Connect your Web3 wallet (MetaMask recommended)
+3. Load a `merkle-tree.json` file or paste a Merkle root
+4. Click "Create Timestamp on [Blockchain Name]"
+5. Confirm the transaction in your wallet
+6. Download the proof file for future verification
+
+**Contract Address (Arbitrum One):** [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://arbiscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+
 ### Folder Policies
 - **Include Hidden Files**: Files/folders starting with "." (default: excluded)
 - **Ignore Junk Files**: System files like `.DS_Store`, `Thumbs.db`, etc. (default: ignored)
@@ -90,10 +111,17 @@ npm run lint
 src/
 ├── components/
 │   ├── MerkleRootGenerator.jsx    # Tree generation UI
-│   └── FileVerification.jsx       # Verification UI
+│   ├── FileVerification.jsx       # Verification UI
+│   ├── OnChainTimestamping.jsx   # Blockchain timestamping UI
+│   ├── BlockchainCommit.jsx      # Commit to blockchain component
+│   └── ErrorBoundary.jsx          # Error handling component
 ├── lib/
 │   ├── merkle.js                  # Core cryptographic functions
-│   └── utils.js                   # Shared utilities
+│   ├── utils.jsx                  # Shared utilities
+│   ├── constants.js               # Application constants
+│   ├── validation.js              # Input validation utilities
+│   └── errorHandler.js            # Error handling utilities
+├── config.js                      # Configuration (contract addresses, etc.)
 └── App.jsx                        # Main application with routing
 ```
 
@@ -104,6 +132,19 @@ src/
 - Cryptographic operations use browser's Web Crypto API
 - File access requires explicit user permission
 - Content-based hashing ensures deterministic results
+- Blockchain timestamps provide immutable proof of existence
+- Merkle roots are publicly verifiable but don't reveal file contents
+
+## Blockchain Timestamping
+
+This application implements blockchain timestamping, inspired by [OpenTimestamps](https://opentimestamps.org/). Key features:
+
+- **Immutable Proofs**: Once committed to the blockchain, timestamps cannot be altered
+- **Public Verification**: Anyone can verify timestamps using the proof files
+- **Privacy-Preserving**: Only Merkle roots are stored on-chain, not your actual files
+- **Cost-Effective**: Low-cost timestamping on Arbitrum L2
+
+For detailed information about timestamping concepts, use cases, and verification, see [TIMESTAMPING.md](TIMESTAMPING.md).
 
 ## Contributing
 

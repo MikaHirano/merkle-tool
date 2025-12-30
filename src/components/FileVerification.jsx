@@ -15,6 +15,8 @@ import {
   readFileWithErrorHandling,
   shouldIgnoreRelPath,
 } from "../lib/utils.jsx";
+import { PROGRESS_UPDATE_THROTTLE_MS } from "../lib/constants.js";
+import { getErrorMessage, logError } from "../lib/errorHandler.js";
 
 /**
  * Verification supports:
@@ -57,7 +59,7 @@ export default function FileVerification({ limits }) {
   // Throttle progress updates to avoid excessive re-renders
   const updateProgressThrottled = useCallback((done, total) => {
     const now = Date.now();
-    if (now - lastProgressUpdate.current > 100) { // Update at most every 100ms
+    if (now - lastProgressUpdate.current > PROGRESS_UPDATE_THROTTLE_MS) {
       setProgress({ done, total });
       lastProgressUpdate.current = now;
     }
@@ -120,7 +122,8 @@ export default function FileVerification({ limits }) {
       setStatus("JSON loaded.");
     } catch (e) {
       if (e?.name === "AbortError") return;
-      setError(String(e?.message || e));
+      logError(e, "FileVerification.openJson");
+      setError(getErrorMessage(e));
       setStatus("Idle.");
     }
   }
@@ -170,27 +173,32 @@ export default function FileVerification({ limits }) {
       setStatus("Hashing files locally…");
       setProgress({ done: 0, total: filtered.length });
 
+      // Store file data with hashes for both exact and subset verification
+      const fileData = [];
       const enc = new TextEncoder();
-      const leafHashes = [];
-
+      
       for (let i = 0; i < filtered.length; i++) {
-        const { file } = filtered[i];
-
+        const { file, relPath } = filtered[i];
         const bytes = await readFileWithErrorHandling(file);
-
         const contentHashBytes = await sha256Bytes(bytes);
-        const leafHashBytes = await sha256Bytes(
-          new Uint8Array([...enc.encode("leaf\0"), ...contentHashBytes])
-        );
-
-        leafHashes.push(leafHashBytes);
+        const contentHashHex = toHex(contentHashBytes).toLowerCase();
+        const leafHashBytes = await computeLeafHashBytes(contentHashBytes);
+        
+        fileData.push({
+          relPath,
+          contentHashHex,
+          leafHashBytes,
+          contentHashBytes
+        });
+        
         updateProgressThrottled(i + 1, filtered.length);
       }
 
       // Ensure final progress is shown
       setProgress({ done: filtered.length, total: filtered.length });
 
-      // canonical ordering
+      // Try exact match first: canonical ordering and build tree
+      const leafHashes = fileData.map(f => f.leafHashBytes);
       leafHashes.sort((a, b) => (toHex(a) < toHex(b) ? -1 : 1));
 
       setStatus("Building Merkle tree…");
@@ -198,22 +206,105 @@ export default function FileVerification({ limits }) {
       const computed = toHex(root);
       const expected = String(json.root || "");
 
-      const ok = computed.toLowerCase() === expected.toLowerCase();
+      const exactMatch = computed.toLowerCase() === expected.toLowerCase();
+
+      let verificationMode = "exact";
+      let filesVerified = [];
+      let filesMissing = [];
+      let verificationRate = 0;
+
+      if (exactMatch) {
+        // Exact match - all files verified
+        filesVerified = fileData.map(f => f.relPath);
+        verificationRate = 100;
+      } else {
+        // Fall back to subset verification
+        verificationMode = "subset";
+        setStatus("Verifying files individually…");
+        
+        // Create lookup map: contentHash -> array of leaf indices
+        const contentHashMap = new Map();
+        for (let i = 0; i < json.leaves.length; i++) {
+          const leaf = json.leaves[i];
+          const hash = String(leaf.contentHash || "").toLowerCase();
+          if (!contentHashMap.has(hash)) {
+            contentHashMap.set(hash, []);
+          }
+          contentHashMap.get(hash).push(i);
+        }
+
+        // Prepare tree levels for proof verification
+        const levels = json.tree.levels.map((lvl) => lvl.map(hexToBytes));
+
+        // Verify each file individually
+        let verifiedCount = 0;
+        for (let i = 0; i < fileData.length; i++) {
+          const file = fileData[i];
+          updateProgressThrottled(i + 1, fileData.length);
+
+          const candidateIndices = contentHashMap.get(file.contentHashHex) || [];
+          
+          if (candidateIndices.length === 0) {
+            filesMissing.push(file.relPath);
+            continue;
+          }
+
+          // Try to verify membership for each candidate
+          let verified = false;
+          for (const idx of candidateIndices) {
+            const leaf = json.leaves[idx];
+            const leafHashHex = String(leaf.leafHash || "").toLowerCase();
+            
+            if (toHex(file.leafHashBytes).toLowerCase() !== leafHashHex) {
+              continue;
+            }
+
+            // Build proof and verify
+            const proof = buildProof(levels, idx);
+            const computedRoot = toHex(await computeRootFromProof(file.leafHashBytes, proof));
+
+            if (computedRoot.toLowerCase() === expected.toLowerCase()) {
+              verified = true;
+              break;
+            }
+          }
+
+          if (verified) {
+            filesVerified.push(file.relPath);
+            verifiedCount++;
+          } else {
+            filesMissing.push(file.relPath);
+          }
+        }
+
+        verificationRate = fileData.length > 0 
+          ? Math.round((verifiedCount / fileData.length) * 100) 
+          : 0;
+      }
+
+      const ok = exactMatch || (verificationMode === "subset" && filesVerified.length > 0 && filesMissing.length === 0);
 
       setFolderResult({
         ok,
+        verificationMode,
         expected,
-        computed,
+        computed: exactMatch ? computed : null,
         jsonLeafCount: json.summary?.fileCount ?? json.leaves.length,
         selectedCount: pairs.length,
         filteredCount: filtered.length,
         policyUsed: useJsonPolicy ? "json.folderPolicy" : "no policy",
+        filesVerified,
+        filesMissing,
+        verificationRate,
+        verifiedCount: filesVerified.length,
+        totalFiles: fileData.length,
       });
 
       setStatus("Done.");
     } catch (e) {
       if (e?.name === "AbortError") return;
-      setError(String(e?.message || e));
+      logError(e, "FileVerification.verifyFolder");
+      setError(getErrorMessage(e));
       setStatus("Idle.");
     } finally {
       setIsProcessing(false);
@@ -284,7 +375,8 @@ export default function FileVerification({ limits }) {
       setStatus("Done.");
     } catch (e) {
       if (e?.name === "AbortError") return;
-      setError(String(e?.message || e));
+      logError(e, "FileVerification.verifySingleFile");
+      setError(getErrorMessage(e));
       setStatus("Idle.");
     } finally {
       setIsProcessing(false);
@@ -297,7 +389,12 @@ export default function FileVerification({ limits }) {
 
       <div style={card}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button style={button} onClick={openJson} disabled={!hasOpen}>
+          <button 
+            style={button} 
+            onClick={openJson} 
+            disabled={!hasOpen}
+            aria-label="Open merkle tree JSON file for verification"
+          >
             Open merkle-tree.json
           </button>
         </div>
@@ -338,6 +435,8 @@ export default function FileVerification({ limits }) {
             style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
             onClick={verifyFolder}
             disabled={!json || !hasDir || isProcessing}
+            aria-label="Verify folder against loaded Merkle tree"
+            aria-busy={isProcessing}
           >
             {isProcessing ? "Verifying..." : "Verify Folder"}
           </button>
@@ -345,6 +444,8 @@ export default function FileVerification({ limits }) {
             style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
             onClick={verifySingleFile}
             disabled={!json || !hasOpen || isProcessing}
+            aria-label="Verify single file against loaded Merkle tree"
+            aria-busy={isProcessing}
           >
             {isProcessing ? "Verifying..." : "Verify Single File"}
           </button>
@@ -371,13 +472,23 @@ export default function FileVerification({ limits }) {
           </div>
 
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.88, lineHeight: 1.6 }}>
+            <div>Verification mode: <span style={monoInline}>{folderResult.verificationMode === "exact" ? "Exact Match" : "Subset Verification"}</span></div>
             <div>Selected by picker: <span style={monoInline}>{folderResult.selectedCount}</span></div>
             <div>After filtering: <span style={monoInline}>{folderResult.filteredCount}</span></div>
             <div>JSON leaf count: <span style={monoInline}>{folderResult.jsonLeafCount}</span></div>
             <div>Policy used: <span style={monoInline}>{folderResult.policyUsed}</span></div>
+            
+            {folderResult.verificationMode === "subset" && (
+              <>
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+                  <div>Files verified: <span style={monoInline}>{folderResult.verifiedCount}</span> / <span style={monoInline}>{folderResult.totalFiles}</span></div>
+                  <div>Verification rate: <span style={monoInline}>{folderResult.verificationRate}%</span></div>
+                </div>
+              </>
+            )}
           </div>
 
-          {!folderResult.ok && (
+          {folderResult.verificationMode === "exact" && !folderResult.ok && (
             <>
               <div style={{ marginTop: 12, opacity: 0.8 }}>Expected root:</div>
               <div style={mono}>{folderResult.expected}</div>
@@ -385,6 +496,31 @@ export default function FileVerification({ limits }) {
               <div style={{ marginTop: 12, opacity: 0.8 }}>Computed root:</div>
               <div style={mono}>{folderResult.computed}</div>
             </>
+          )}
+
+          {folderResult.verificationMode === "subset" && folderResult.filesMissing && folderResult.filesMissing.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 13, opacity: 0.9, marginBottom: 6 }}>Missing files ({folderResult.filesMissing.length}):</div>
+              <div style={{
+                maxHeight: 200,
+                overflowY: "auto",
+                padding: 8,
+                background: "rgba(255, 107, 107, 0.05)",
+                borderRadius: 8,
+                fontSize: 11,
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+              }}>
+                {folderResult.filesMissing.map((path, idx) => (
+                  <div key={idx} style={{ marginBottom: 4, color: "#ff6b6b" }}>{path}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {folderResult.verificationMode === "subset" && folderResult.ok && (
+            <div style={{ marginTop: 12, padding: 10, background: "rgba(46, 204, 113, 0.1)", borderRadius: 8, fontSize: 13, color: "#2ecc71" }}>
+              ✅ All {folderResult.verifiedCount} file{folderResult.verifiedCount !== 1 ? 's' : ''} in the selected folder are verified to be part of the original Merkle tree.
+            </div>
           )}
         </div>
       )}

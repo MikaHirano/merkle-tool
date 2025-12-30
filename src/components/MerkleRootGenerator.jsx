@@ -13,6 +13,8 @@ import {
   readFileWithErrorHandling,
   shouldIgnoreRelPath,
 } from "../lib/utils.jsx";
+import { PROGRESS_UPDATE_THROTTLE_MS, DEFAULT_FOLDER_POLICY } from "../lib/constants.js";
+import { getErrorMessage, logError } from "../lib/errorHandler.js";
 
 /**
  * Bytes-only Merkle commitment:
@@ -22,13 +24,8 @@ import {
  * - ordering    = leafHash hex asc
  */
 
-const DEFAULT_POLICY = {
-  includeHidden: false,
-  ignoreJunk: true,
-  ignoreNames: [".DS_Store", "Thumbs.db", "desktop.ini"],
-  ignorePrefixes: ["._"],
-  ignorePathPrefixes: [".git/", "node_modules/", ".Spotlight-V100/", ".Trashes/"],
-};
+// Use default policy from constants
+const DEFAULT_POLICY = DEFAULT_FOLDER_POLICY;
 
 export default function MerkleRootGenerator({ limits }) {
   const hasDir = typeof window !== "undefined" && "showDirectoryPicker" in window;
@@ -45,7 +42,7 @@ export default function MerkleRootGenerator({ limits }) {
 
   const updateProgressThrottled = useCallback((done, total) => {
     const now = Date.now();
-    if (now - lastProgressUpdate.current > 100) { // Update at most every 100ms
+    if (now - lastProgressUpdate.current > PROGRESS_UPDATE_THROTTLE_MS) {
       setProgress({ done, total });
       lastProgressUpdate.current = now;
     }
@@ -197,7 +194,8 @@ export default function MerkleRootGenerator({ limits }) {
       setStatus("Done.");
     } catch (e) {
       if (e?.name === "AbortError") return;
-      setError(String(e?.message || e));
+      logError(e, "MerkleRootGenerator.chooseFolderAndGenerate");
+      setError(getErrorMessage(e));
       setStatus("Idle.");
     } finally {
       setIsProcessing(false);
@@ -229,7 +227,8 @@ export default function MerkleRootGenerator({ limits }) {
       setStatus("Done.");
     } catch (e) {
       if (e?.name === "AbortError") return;
-      setError(String(e?.message || e));
+      logError(e, "MerkleRootGenerator.chooseFileAndHash");
+      setError(getErrorMessage(e));
       setStatus("Idle.");
     } finally {
       setIsProcessing(false);
@@ -246,6 +245,8 @@ export default function MerkleRootGenerator({ limits }) {
             style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
             onClick={chooseFolderAndGenerate}
             disabled={!hasDir || isProcessing}
+            aria-label="Select folder and generate Merkle tree"
+            aria-busy={isProcessing}
           >
             {isProcessing ? "Processing..." : "Folder → Merkle Tree"}
           </button>
@@ -254,6 +255,8 @@ export default function MerkleRootGenerator({ limits }) {
             style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
             onClick={chooseFileAndHash}
             disabled={!hasOpen || isProcessing}
+            aria-label="Select single file and compute SHA-256 hash"
+            aria-busy={isProcessing}
           >
             {isProcessing ? "Processing..." : "Single File → SHA-256"}
           </button>
@@ -303,10 +306,18 @@ export default function MerkleRootGenerator({ limits }) {
           <div style={mono}>{root}</div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <button style={button} onClick={downloadMerkleJson}>
+            <button 
+              style={button} 
+              onClick={downloadMerkleJson}
+              aria-label="Download merkle tree JSON file"
+            >
               Download merkle-tree.json
             </button>
-            <button style={button} onClick={() => copyToClipboard(root, "Root copied!")}>
+            <button 
+              style={button} 
+              onClick={() => copyToClipboard(root, "Root copied!")}
+              aria-label="Copy Merkle root to clipboard"
+            >
               Copy root
             </button>
           </div>
@@ -327,7 +338,11 @@ export default function MerkleRootGenerator({ limits }) {
           <div style={{ marginTop: 8, opacity: 0.8 }}>SHA-256:</div>
           <div style={mono}>{fileHash}</div>
           <div style={{ marginTop: 10 }}>
-            <button style={button} onClick={() => copyToClipboard(fileHash, "Hash copied!")}>
+            <button 
+              style={button} 
+              onClick={() => copyToClipboard(fileHash, "Hash copied!")}
+              aria-label="Copy file hash to clipboard"
+            >
               Copy hash
             </button>
           </div>
