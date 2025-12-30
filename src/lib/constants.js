@@ -25,6 +25,14 @@ export const NETWORK_NAMES = {
 
 // Explorer URLs
 export const EXPLORER_URLS = {
+  [NETWORK_IDS.ETHEREUM_MAINNET]: {
+    base: "https://etherscan.io",
+    name: "Etherscan",
+  },
+  [NETWORK_IDS.OPTIMISM]: {
+    base: "https://optimistic.etherscan.io",
+    name: "Optimistic Etherscan",
+  },
   [NETWORK_IDS.ARBITRUM_ONE]: {
     base: "https://arbiscan.io",
     name: "Arbiscan",
@@ -32,6 +40,10 @@ export const EXPLORER_URLS = {
   [NETWORK_IDS.ARBITRUM_SEPOLIA]: {
     base: "https://sepolia.arbiscan.io",
     name: "Arbiscan Sepolia",
+  },
+  [NETWORK_IDS.BASE]: {
+    base: "https://basescan.org",
+    name: "Basescan",
   },
   [NETWORK_IDS.LOCAL_ANVIL]: {
     base: "http://localhost:8545",
@@ -81,4 +93,21 @@ export const SCHEMA_VERSIONS = {
   MERKLE_TREE: "merkle-bytes-tree@1",
   BLOCKCHAIN_PROOF: "merkle-blockchain-proof@1",
 };
+
+/**
+ * Get filesystem-safe short name for blockchain from chain ID
+ * @param {number} chainId - Chain ID
+ * @returns {string} Short blockchain identifier (lowercase, filesystem-safe)
+ */
+export function getBlockchainShortName(chainId) {
+  const mapping = {
+    [NETWORK_IDS.ETHEREUM_MAINNET]: "ethereum",
+    [NETWORK_IDS.ARBITRUM_ONE]: "arbitrum",
+    [NETWORK_IDS.ARBITRUM_SEPOLIA]: "arbitrum-sepolia",
+    [NETWORK_IDS.LOCAL_ANVIL]: "local",
+    [NETWORK_IDS.OPTIMISM]: "optimism",
+    [NETWORK_IDS.BASE]: "base",
+  };
+  return mapping[chainId] || `chain-${chainId}`;
+}
 

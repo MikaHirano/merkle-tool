@@ -112,7 +112,7 @@ export default function App() {
 
               {!loading && loadErr && (
                 <div style={errorState}>
-                  <div style={{ fontSize: 18, marginBottom: 8 }}>⚠️ Component Load Error</div>
+                  <div style={{ fontSize: 18, marginBottom: 8 }}>Component Load Error</div>
                   <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 12 }}>
                     Failed to load the requested component. This might be due to a network issue or browser compatibility.
                   </div>

@@ -2,14 +2,14 @@
 
 ## Overview
 
-This application provides **blockchain timestamping** capabilities, allowing you to create cryptographic proofs that your files existed at a specific point in time. This is inspired by [OpenTimestamps](https://opentimestamps.org/), a decentralized timestamping protocol, but implemented using Arbitrum blockchain for enhanced security and decentralization.
+This application provides **blockchain timestamping** capabilities, allowing you to create cryptographic proofs that your files existed at a specific point in time. This is inspired by [OpenTimestamps](https://opentimestamps.org/), a decentralized timestamping protocol, but implemented using Ethereum and Arbitrum blockchains for enhanced security and decentralization.
 
 ## What is Timestamping?
 
 Timestamping is the process of proving that certain data existed at a specific point in time. In the context of this application:
 
 1. **You generate a Merkle root** from your files/folders
-2. **You commit this root to the blockchain** (Arbitrum)
+2. **You commit this root to the blockchain** (Ethereum Mainnet or Arbitrum)
 3. **The blockchain provides immutable proof** that your data existed when the transaction was included in a block
 
 This creates a **cryptographic proof** that cannot be forged or backdated, as it relies on the blockchain's consensus mechanism.
@@ -28,12 +28,15 @@ The Merkle root is deterministic - the same files will always produce the same r
 
 ### Step 2: Commit to Blockchain
 
-When you click "Create Timestamp on Arbitrum One":
+When you click "Create Timestamp on [Blockchain Name]":
 
-1. **Your wallet connects** to the Arbitrum blockchain
+1. **Your wallet connects** to the selected blockchain (Ethereum Mainnet or Arbitrum One)
 2. **A transaction is sent** containing your Merkle root
-3. **The transaction is included in a block** with a specific block number and timestamp
-4. **You receive a proof file** containing all the details needed to verify the timestamp
+3. **Transaction status is tracked** - you'll see "Transaction pending confirmation" while waiting
+4. **The transaction is included in a block** with a specific block number and timestamp
+5. **Transaction is confirmed** - status changes to "Successfully committed"
+6. **You receive a proof file** containing all the details needed to verify the timestamp
+7. **Explorer links become available** - view the transaction and contract on Etherscan, Optimistic Etherscan, Arbiscan, or Basescan
 
 ### Step 3: Verification
 
@@ -58,22 +61,48 @@ This application shares core concepts with [OpenTimestamps](https://opentimestam
 
 | Feature | OpenTimestamps | This Application |
 |---------|---------------|------------------|
-| **Blockchain** | Bitcoin | Arbitrum (Ethereum L2) |
-| **Cost** | Very low (aggregated) | Low (L2 gas fees) |
-| **Confirmation** | ~10 minutes | ~1-2 seconds |
+| **Blockchain** | Bitcoin | Ethereum Mainnet, Optimism, Arbitrum One, Base (Ethereum L2) |
+| **Cost** | Very low (aggregated) | Low (L2 gas fees) or moderate (Ethereum mainnet) |
+| **Confirmation** | ~10 minutes | ~1-2 seconds (L2) or ~12 seconds (Ethereum) |
 | **Metadata** | Minimal | Rich (file count, sizes, etc.) |
 | **Proof Format** | `.ots` files | `.json` files |
 | **Verification** | Command-line tools | Web interface |
+| **Network Switching** | Single chain | Bidirectional sync with MetaMask |
+| **Transaction Status** | Basic | Real-time pending/confirmed states |
 
-### Why Arbitrum?
+### Multi-Chain Support
 
-Arbitrum was chosen for this implementation because:
+This application supports multiple networks:
 
+**Ethereum Mainnet:**
+- **Maximum security**: Directly secured by Ethereum's consensus mechanism
+- **Highest decentralization**: Full Ethereum validator set
+- **Standard fees**: Higher gas costs but maximum security guarantees
+- **Universal compatibility**: Works with all Ethereum tooling
+
+**Optimism (L2):**
+- **Fast confirmations**: Transactions are confirmed in seconds
+- **Low cost**: L2 fees are significantly lower than Ethereum mainnet
+- **Ethereum compatibility**: Uses the same security model as Ethereum
+- **OP Stack**: Built on the OP Stack for scalability
+
+**Arbitrum One (L2):**
 - **Fast confirmations**: Transactions are confirmed in seconds, not minutes
 - **Low cost**: L2 fees are significantly lower than Ethereum mainnet
 - **Ethereum compatibility**: Uses the same security model as Ethereum
 - **Rich metadata**: Can store additional information about your commitment
 - **Accessibility**: Easy to interact with via web wallets like MetaMask
+
+**Base (L2):**
+- **Fast confirmations**: Transactions are confirmed in seconds
+- **Low cost**: L2 fees are significantly lower than Ethereum mainnet
+- **Ethereum compatibility**: Uses the same security model as Ethereum
+- **Coinbase integration**: Built by Coinbase on the OP Stack
+
+**Bidirectional Network Switching:**
+- The app automatically syncs with MetaMask network changes
+- Users can switch networks from either the app or MetaMask
+- Contract addresses are automatically selected based on the connected network
 
 ## Proof File Format
 
@@ -87,8 +116,8 @@ After creating a timestamp, you receive a proof file (e.g., `merkle-proof-202401
     "hash": "0x1234...",
     "blockNumber": 12345678,
     "blockHash": "0xabcd...",
-    "chainId": 42161,
-    "contractAddress": "0xA095c28448186ACC0e950A17b96879394f89C5B4",
+    "chainId": 1,
+    "contractAddress": "0xE1DEb3c75b5c32D672ac8287010C231f4C15033b",
     "gasUsed": "21000",
     "timestamp": 1703123456789
   },
@@ -100,7 +129,35 @@ After creating a timestamp, you receive a proof file (e.g., `merkle-proof-202401
     "schema": "merkle-bytes-tree@1"
   },
   "verification": {
-    "contractUrl": "https://arbiscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4",
+    "contractUrl": "https://etherscan.io/address/0xE1DEb3c75b5c32D672ac8287010C231f4C15033b",
+    "transactionUrl": "https://etherscan.io/tx/0x1234..."
+  }
+}
+```
+
+**Example for Arbitrum One (chainId: 42161):**
+```json
+{
+  "schema": "merkle-blockchain-proof@1",
+  "merkleRoot": "0xa1b2c3d4...",
+  "transaction": {
+    "hash": "0x1234...",
+    "blockNumber": 12345678,
+    "blockHash": "0xabcd...",
+    "chainId": 42161,
+    "contractAddress": "0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E",
+    "gasUsed": "21000",
+    "timestamp": 1703123456789
+  },
+  "committer": "0x9abc...",
+  "metadata": {
+    "fileCount": 42,
+    "totalBytes": 1048576,
+    "generatedAt": "2024-01-01T12:00:00.000Z",
+    "schema": "merkle-bytes-tree@1"
+  },
+  "verification": {
+    "contractUrl": "https://arbiscan.io/address/0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E",
     "transactionUrl": "https://arbiscan.io/tx/0x1234..."
   }
 }
@@ -148,17 +205,17 @@ Use blockchain timestamping as a cost-effective alternative to traditional notar
 
 ### What Blockchain Timestamping Provides
 
-✅ **Proof of existence** at a specific time  
-✅ **Tamper-proof** records (cannot be altered after commitment)  
-✅ **Publicly verifiable** proofs  
-✅ **Decentralized** (no single point of failure)  
+**YES: Proof of existence** at a specific time  
+**YES: Tamper-proof** records (cannot be altered after commitment)  
+**YES: Publicly verifiable** proofs  
+**YES: Decentralized** (no single point of failure)  
 
 ### What It Does NOT Provide
 
-❌ **Proof of authorship** (anyone can commit a root)  
-❌ **File encryption** (your files remain unencrypted)  
-❌ **File storage** (only the Merkle root is stored)  
-❌ **Privacy** (the Merkle root is public on the blockchain)  
+**NO: Proof of authorship** (anyone can commit a root)  
+**NO: File encryption** (your files remain unencrypted)  
+**NO: File storage** (only the Merkle root is stored)  
+**NO: Privacy** (the Merkle root is public on the blockchain)  
 
 ### Best Practices
 
@@ -205,20 +262,30 @@ This ensures:
 
 ### Smart Contract
 
-The `MerkleRootRegistry` contract on Arbitrum:
+The `MerkleRootRegistry` contract is deployed on multiple networks:
 
 - **Stores commitments** with block number and timestamp
 - **Prevents duplicates** - Each root can only be committed once
 - **Allows metadata updates** - Original committer can update metadata
 - **Efficient lookups** - O(1) checks for commitment existence
 
-Contract Address: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://arbiscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+**Contract Addresses:**
+- **Ethereum Mainnet**: [`0xE1DEb3c75b5c32D672ac8287010C231f4C15033b`](https://etherscan.io/address/0xE1DEb3c75b5c32D672ac8287010C231f4C15033b)
+- **Optimism**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://optimistic.etherscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+- **Arbitrum One**: [`0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E`](https://arbiscan.io/address/0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E)
+- **Base**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://basescan.org/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
 
 ## Frequently Asked Questions
 
 ### Q: How much does it cost?
 
-A: The cost depends on Arbitrum gas fees, typically $0.01-$0.10 per timestamp. This is much cheaper than traditional notarization services.
+A: The cost depends on the network:
+- **Arbitrum One**: Typically $0.01-$0.10 per timestamp (L2 fees)
+- **Optimism**: Typically $0.01-$0.10 per timestamp (L2 fees)
+- **Base**: Typically $0.01-$0.10 per timestamp (L2 fees)
+- **Ethereum Mainnet**: Typically $1-$10 per timestamp (mainnet fees)
+
+All networks are much cheaper than traditional notarization services.
 
 ### Q: Can I timestamp individual files?
 
@@ -230,7 +297,7 @@ A: Modified files will produce a different Merkle root. Your original timestamp 
 
 ### Q: How long are timestamps valid?
 
-A: As long as the Arbitrum blockchain exists, your timestamps are valid. The blockchain provides permanent, immutable records.
+A: As long as the blockchain exists (Ethereum or Arbitrum), your timestamps are valid. The blockchain provides permanent, immutable records.
 
 ### Q: Can I delete my timestamp?
 
@@ -243,7 +310,7 @@ A: Your actual files are never uploaded. Only the Merkle root (a 32-byte hash) i
 ### Q: Can I verify timestamps without the app?
 
 A: Yes! You can verify timestamps by:
-- Checking the contract on Arbiscan
+- Checking the contract on Etherscan (Ethereum), Optimistic Etherscan (Optimism), Arbiscan (Arbitrum), or Basescan (Base)
 - Regenerating the Merkle root using any compatible tool
 - Comparing the roots
 
@@ -251,6 +318,7 @@ A: Yes! You can verify timestamps by:
 
 - [OpenTimestamps Documentation](https://opentimestamps.org/)
 - [Merkle Trees Explained](https://en.wikipedia.org/wiki/Merkle_tree)
+- [Ethereum Documentation](https://ethereum.org/en/developers/docs/)
 - [Arbitrum Documentation](https://docs.arbitrum.io/)
 - [Blockchain Timestamping Concepts](https://en.wikipedia.org/wiki/Trusted_timestamping)
 

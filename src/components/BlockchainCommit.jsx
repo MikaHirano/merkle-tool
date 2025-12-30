@@ -1,9 +1,25 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { getContractAddress } from "../config.js";
-import { EXPLORER_URLS, NETWORK_IDS, NETWORK_NAMES, SCHEMA_VERSIONS, MAX_METADATA_LENGTH } from "../lib/constants.js";
+import { EXPLORER_URLS, NETWORK_IDS, NETWORK_NAMES, SCHEMA_VERSIONS, MAX_METADATA_LENGTH, getBlockchainShortName } from "../lib/constants.js";
 import { validateAndChecksumAddress, normalizeMerkleRoot, validateMetadataLength } from "../lib/validation.js";
 import { getErrorMessage, logError } from "../lib/errorHandler.js";
+
+// Ensure spin animation is available
+if (typeof document !== "undefined") {
+  const styleId = "blockchain-commit-spinner";
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
 
 // Contract ABI
 const REGISTRY_ABI = [
@@ -51,6 +67,7 @@ const REGISTRY_ABI = [
 export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommitted }) {
   const [committing, setCommitting] = useState(false);
   const [txHash, setTxHash] = useState(null);
+  const [txConfirmed, setTxConfirmed] = useState(false);
   const [error, setError] = useState(null);
   const [proofData, setProofData] = useState(null);
   const [chainId, setChainId] = useState(null);
@@ -88,6 +105,7 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
 
     setCommitting(true);
     setError(null);
+    setTxConfirmed(false);
 
     try {
       const contract = new ethers.Contract(checksummedAddress, REGISTRY_ABI, wallet.signer);
@@ -124,25 +142,33 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
       // Execute transaction
       const tx = await contract.commitMerkleRoot(rootBytes32, metadata);
       setTxHash(tx.hash);
+      setTxConfirmed(false); // Transaction sent but not confirmed yet
 
       // Wait for confirmation
       const receipt = await tx.wait();
+      setTxConfirmed(true); // Transaction confirmed
       
       // Store chainId from transaction
       const txChainId = wallet.chainId;
       setChainId(txChainId);
 
       // Get explorer URLs based on chain ID
-      const explorerInfo = EXPLORER_URLS[txChainId] || EXPLORER_URLS[NETWORK_IDS.ARBITRUM_ONE];
+      const explorerInfo = EXPLORER_URLS[txChainId] || EXPLORER_URLS[NETWORK_IDS.ETHEREUM_MAINNET] || EXPLORER_URLS[NETWORK_IDS.ARBITRUM_ONE];
       const explorer = {
         txUrl: `${explorerInfo.base}/tx/${tx.hash}`,
         contractUrl: `${explorerInfo.base}/address/${checksummedAddress}`,
         name: explorerInfo.name
       };
 
+      // Get blockchain name
+      const blockchainName = NETWORK_NAMES[txChainId] || "Unknown";
+      
       // Create proof data
       const proofData = {
         schema: SCHEMA_VERSIONS.BLOCKCHAIN_PROOF,
+        blockchain: blockchainName,
+        blockchainId: txChainId,
+        blockchainExplorer: explorerInfo.name,
         merkleRoot: rootBytes32,
         transaction: {
           hash: tx.hash,
@@ -167,6 +193,12 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
     } catch (err) {
       logError(err, "BlockchainCommit.handleCommit");
       setError(getErrorMessage(err));
+      // If transaction was sent but failed during confirmation, keep txHash visible
+      // but mark as not confirmed so user can see the failed transaction
+      if (txHash && !txConfirmed) {
+        // Transaction was sent but confirmation failed - keep txHash for reference
+        // but don't mark as confirmed
+      }
     } finally {
       setCommitting(false);
     }
@@ -178,7 +210,7 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
    * @returns {Object} Explorer info
    */
   const getExplorerInfo = (chainId) => {
-    return EXPLORER_URLS[chainId] || EXPLORER_URLS[NETWORK_IDS.ARBITRUM_ONE];
+    return EXPLORER_URLS[chainId] || EXPLORER_URLS[NETWORK_IDS.ETHEREUM_MAINNET] || EXPLORER_URLS[NETWORK_IDS.ARBITRUM_ONE];
   };
 
   const downloadProof = (proofData) => {
@@ -186,7 +218,8 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
 
     const timestamp = new Date(proofData.transaction.timestamp).toISOString().slice(0, 10).replace(/-/g, '');
     const rootPrefix = proofData.merkleRoot.slice(2, 10); // Remove 0x prefix for filename
-    const filename = `merkle-proof-${timestamp}-${rootPrefix}.json`;
+    const blockchainShortName = getBlockchainShortName(proofData.blockchainId || proofData.transaction.chainId);
+    const filename = `merkle-proof-${blockchainShortName}-${timestamp}-${rootPrefix}.json`;
 
     const blob = new Blob([JSON.stringify(proofData, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -219,7 +252,7 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
           fontSize: 12,
           marginBottom: 12
         }}>
-          ⚠️ Contract address not configured for this network
+          WARNING: Contract address not configured for this network
         </div>
       )}
 
@@ -252,18 +285,38 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
         </button>
       ) : (
         <div>
-          <div style={{
-            padding: "12px",
-            borderRadius: 9,
-            background: "rgba(46, 204, 113, 0.1)",
-            border: "1px solid rgba(46, 204, 113, 0.3)",
-            color: "#2ecc71",
-            fontSize: 13,
-            marginBottom: 12,
-            textAlign: "center"
-          }}>
-            ✅ Successfully committed to {NETWORK_NAMES[chainId] || "blockchain"}!
-          </div>
+          {txConfirmed ? (
+            <div style={{
+              padding: "12px",
+              borderRadius: 9,
+              background: "rgba(46, 204, 113, 0.1)",
+              border: "1px solid rgba(46, 204, 113, 0.3)",
+              color: "#2ecc71",
+              fontSize: 13,
+              marginBottom: 12,
+              textAlign: "center"
+            }}>
+              Successfully committed to {NETWORK_NAMES[chainId] || "blockchain"}!
+            </div>
+          ) : (
+            <div style={{
+              padding: "12px",
+              borderRadius: 9,
+              background: "rgba(255, 193, 7, 0.1)",
+              border: "1px solid rgba(255, 193, 7, 0.3)",
+              color: "#ffc107",
+              fontSize: 13,
+              marginBottom: 12,
+              textAlign: "center",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8
+            }}>
+              <div style={pendingSpinner}></div>
+              Transaction pending confirmation...
+            </div>
+          )}
 
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Transaction Hash</div>
@@ -279,20 +332,22 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
             </div>
             {chainId && (
               <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-                <a
-                  href={getExplorerInfo(chainId).base + `/tx/${txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: "inline-block",
-                    fontSize: 11,
-                    color: "#667eea",
-                    textDecoration: "none",
-                    fontWeight: 500
-                  }}
-                >
-                  View Transaction on {getExplorerInfo(chainId).name} ↗
-                </a>
+                {txConfirmed && (
+                  <a
+                    href={getExplorerInfo(chainId).base + `/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "inline-block",
+                      fontSize: 11,
+                      color: "#667eea",
+                      textDecoration: "none",
+                      fontWeight: 500
+                    }}
+                  >
+                    View Transaction on {getExplorerInfo(chainId).name} ↗
+                  </a>
+                )}
                 <a
                   href={getExplorerInfo(chainId).base + `/address/${contractAddress}`}
                   target="_blank"
@@ -311,23 +366,25 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
             )}
           </div>
 
-          <button
-            style={{
-              padding: "10px 14px",
-              borderRadius: 9,
-              background: "rgba(46, 204, 113, 0.1)",
-              color: "#2ecc71",
-              border: "1px solid rgba(46, 204, 113, 0.3)",
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 600,
-              width: "100%"
-            }}
-            onClick={() => proofData && downloadProof(proofData)}
-            aria-label="Download blockchain proof file"
-          >
-            Download Proof File
-          </button>
+          {txConfirmed && (
+            <button
+              style={{
+                padding: "10px 14px",
+                borderRadius: 9,
+                background: "rgba(46, 204, 113, 0.1)",
+                color: "#2ecc71",
+                border: "1px solid rgba(46, 204, 113, 0.3)",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                width: "100%"
+              }}
+              onClick={() => proofData && downloadProof(proofData)}
+              aria-label="Download blockchain proof file"
+            >
+              Download Proof File
+            </button>
+          )}
         </div>
       )}
 
@@ -341,7 +398,7 @@ export default function BlockchainCommit({ merkleRoot, jsonData, wallet, onCommi
           color: "#ff6b6b",
           fontSize: 12
         }}>
-          ❌ {error}
+          ERROR: {error}
         </div>
       )}
 
@@ -369,4 +426,14 @@ const input = {
   padding: "9px 11px",
   outline: "none",
   fontSize: 13,
+};
+
+const pendingSpinner = {
+  width: 16,
+  height: 16,
+  border: "2px solid rgba(255, 193, 7, 0.2)",
+  borderTop: "2px solid #ffc107",
+  borderRadius: "50%",
+  animation: "spin 1s linear infinite",
+  flexShrink: 0,
 };

@@ -358,7 +358,7 @@ export default function MerkleRootGenerator({ limits }) {
           borderRadius: 8,
           color: "#ff6b6b"
         }}>
-          ⚠️ {error}
+          WARNING: {error}
         </div>
       )}
 

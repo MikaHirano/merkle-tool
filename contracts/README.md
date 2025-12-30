@@ -1,6 +1,6 @@
 # MerkleRootRegistry Smart Contract
 
-This directory contains the smart contract for committing Merkle roots to the Arbitrum blockchain for timestamping purposes.
+This directory contains the smart contract for committing Merkle roots to Ethereum, Optimism, Arbitrum, and Base blockchains for timestamping purposes.
 
 ## Contract Overview
 
@@ -10,11 +10,15 @@ The `MerkleRootRegistry` contract allows users to:
 - Retrieve commitment details and metadata
 - Update metadata for existing commitments (committer only)
 
-## Contract Address
+## Contract Addresses
 
-**Arbitrum One (Mainnet):** [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://arbiscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+**Ethereum Mainnet:** [`0xE1DEb3c75b5c32D672ac8287010C231f4C15033b`](https://etherscan.io/address/0xE1DEb3c75b5c32D672ac8287010C231f4C15033b)
 
-**Arbitrum Sepolia (Testnet):** `0x0000000000000000000000000000000000000000` (To be deployed)
+**Optimism:** [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://optimistic.etherscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+
+**Arbitrum One (Mainnet):** [`0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E`](https://arbiscan.io/address/0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E)
+
+**Base:** [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://basescan.org/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
 
 ## Deployment Instructions
 
@@ -35,24 +39,32 @@ forge install
 forge test
 ```
 
-### 3. Deploy to Arbitrum Sepolia (Testnet)
+### 3. Deploy to Ethereum Mainnet
 
 ```bash
-# Set your private key (NEVER commit this!)
-export PRIVATE_KEY=your_private_key_here
-
-# Deploy to Sepolia
-forge create --rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+# Deploy to Ethereum Mainnet
+forge create --rpc-url https://eth.llamarpc.com \
     --private-key $PRIVATE_KEY \
-    --etherscan-api-key your_arbiscan_api_key \
+    --etherscan-api-key your_etherscan_api_key \
     --verify \
     contracts/MerkleRootRegistry.sol:MerkleRootRegistry
 ```
 
-### 4. Deploy to Arbitrum One (Mainnet)
+### 4. Deploy to Optimism (Mainnet)
 
 ```bash
-# Deploy to Mainnet
+# Deploy to Optimism Mainnet
+forge create --rpc-url https://mainnet.optimism.io \
+    --private-key $PRIVATE_KEY \
+    --etherscan-api-key your_optimistic_etherscan_api_key \
+    --verify \
+    contracts/MerkleRootRegistry.sol:MerkleRootRegistry
+```
+
+### 5. Deploy to Arbitrum One (Mainnet)
+
+```bash
+# Deploy to Arbitrum One Mainnet
 forge create --rpc-url https://arb1.arbitrum.io/rpc \
     --private-key $PRIVATE_KEY \
     --etherscan-api-key your_arbiscan_api_key \
@@ -60,7 +72,18 @@ forge create --rpc-url https://arb1.arbitrum.io/rpc \
     contracts/MerkleRootRegistry.sol:MerkleRootRegistry
 ```
 
-### 5. Update Contract Address
+### 6. Deploy to Base (Mainnet)
+
+```bash
+# Deploy to Base Mainnet
+forge create --rpc-url https://mainnet.base.org \
+    --private-key $PRIVATE_KEY \
+    --etherscan-api-key your_basescan_api_key \
+    --verify \
+    contracts/MerkleRootRegistry.sol:MerkleRootRegistry
+```
+
+### 8. Update Contract Address
 
 After deployment, update the contract address in:
 - `src/config.js` - Update the default address for the respective network
@@ -107,6 +130,7 @@ Updates metadata for an existing commitment (only by committer).
 
 After committing, users receive a proof file with the following structure:
 
+**Example for Ethereum Mainnet (chainId: 1):**
 ```json
 {
   "schema": "merkle-blockchain-proof@1",
@@ -115,8 +139,8 @@ After committing, users receive a proof file with the following structure:
     "hash": "0x1234...",
     "blockNumber": 12345678,
     "blockHash": "0xabcd...",
-    "chainId": 42161,
-    "contractAddress": "0x5678...",
+    "chainId": 1,
+    "contractAddress": "0xE1DEb3c75b5c32D672ac8287010C231f4C15033b",
     "gasUsed": "21000",
     "timestamp": 1703123456789
   },
@@ -128,8 +152,101 @@ After committing, users receive a proof file with the following structure:
     "schema": "merkle-bytes-tree@1"
   },
   "verification": {
-    "contractUrl": "https://arbiscan.io/address/0x5678...",
+    "contractUrl": "https://etherscan.io/address/0xE1DEb3c75b5c32D672ac8287010C231f4C15033b",
+    "transactionUrl": "https://etherscan.io/tx/0x1234..."
+  }
+}
+```
+
+**Example for Optimism (chainId: 10):**
+```json
+{
+  "schema": "merkle-blockchain-proof@1",
+  "blockchain": "Optimism",
+  "blockchainId": 10,
+  "blockchainExplorer": "Optimistic Etherscan",
+  "merkleRoot": "a1b2c3d4...",
+  "transaction": {
+    "hash": "0x1234...",
+    "blockNumber": 12345678,
+    "blockHash": "0xabcd...",
+    "chainId": 10,
+    "contractAddress": "0xA095c28448186ACC0e950A17b96879394f89C5B4",
+    "gasUsed": "21000",
+    "timestamp": 1703123456789
+  },
+  "committer": "0x9abc...",
+  "metadata": {
+    "fileCount": 42,
+    "totalBytes": 1048576,
+    "generatedAt": "2024-01-01T12:00:00.000Z",
+    "schema": "merkle-bytes-tree@1"
+  },
+  "verification": {
+    "contractUrl": "https://optimistic.etherscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4",
+    "transactionUrl": "https://optimistic.etherscan.io/tx/0x1234..."
+  }
+}
+```
+
+**Example for Arbitrum One (chainId: 42161):**
+```json
+{
+  "schema": "merkle-blockchain-proof@1",
+  "blockchain": "Arbitrum One",
+  "blockchainId": 42161,
+  "blockchainExplorer": "Arbiscan",
+  "merkleRoot": "a1b2c3d4...",
+  "transaction": {
+    "hash": "0x1234...",
+    "blockNumber": 12345678,
+    "blockHash": "0xabcd...",
+    "chainId": 42161,
+    "contractAddress": "0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E",
+    "gasUsed": "21000",
+    "timestamp": 1703123456789
+  },
+  "committer": "0x9abc...",
+  "metadata": {
+    "fileCount": 42,
+    "totalBytes": 1048576,
+    "generatedAt": "2024-01-01T12:00:00.000Z",
+    "schema": "merkle-bytes-tree@1"
+  },
+  "verification": {
+    "contractUrl": "https://arbiscan.io/address/0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E",
     "transactionUrl": "https://arbiscan.io/tx/0x1234..."
+  }
+}
+```
+
+**Example for Base (chainId: 8453):**
+```json
+{
+  "schema": "merkle-blockchain-proof@1",
+  "blockchain": "Base",
+  "blockchainId": 8453,
+  "blockchainExplorer": "Basescan",
+  "merkleRoot": "a1b2c3d4...",
+  "transaction": {
+    "hash": "0x1234...",
+    "blockNumber": 12345678,
+    "blockHash": "0xabcd...",
+    "chainId": 8453,
+    "contractAddress": "0xA095c28448186ACC0e950A17b96879394f89C5B4",
+    "gasUsed": "21000",
+    "timestamp": 1703123456789
+  },
+  "committer": "0x9abc...",
+  "metadata": {
+    "fileCount": 42,
+    "totalBytes": 1048576,
+    "generatedAt": "2024-01-01T12:00:00.000Z",
+    "schema": "merkle-bytes-tree@1"
+  },
+  "verification": {
+    "contractUrl": "https://basescan.org/address/0xA095c28448186ACC0e950A17b96879394f89C5B4",
+    "transactionUrl": "https://basescan.org/tx/0x1234..."
   }
 }
 ```

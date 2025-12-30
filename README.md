@@ -1,10 +1,10 @@
 # Merkle Tool
 
-A web-based tool for generating and verifying Merkle trees from files and folders using SHA-256 cryptographic hashing. Built with React and Vite, this tool provides local-only, client-side processing for secure file integrity verification and **blockchain timestamping** on Arbitrum.
+A web-based tool for generating and verifying Merkle trees from files and folders using SHA-256 cryptographic hashing. Built with React and Vite, this tool provides local-only, client-side processing for secure file integrity verification and **blockchain timestamping** on Ethereum and Arbitrum.
 
-## 🆕 Blockchain Timestamping
+## Blockchain Timestamping
 
-Create immutable timestamps of your files on the Arbitrum blockchain! This feature is inspired by [OpenTimestamps](https://opentimestamps.org/) and allows you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
+Create immutable timestamps of your files on Ethereum and Arbitrum blockchains! This feature is inspired by [OpenTimestamps](https://opentimestamps.org/) and allows you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
 
 ## Features
 
@@ -21,9 +21,11 @@ Create immutable timestamps of your files on the Arbitrum blockchain! This featu
 - **Subfolder Verification**: Verify that subfolders are contained within a larger Merkle tree
 
 ### Blockchain Timestamping
-- **On-Chain Commitments**: Commit Merkle roots to Arbitrum blockchain for immutable timestamping
+- **On-Chain Commitments**: Commit Merkle roots to Ethereum, Optimism, Arbitrum, and Base blockchains for immutable timestamping
 - **Proof Generation**: Download proof files containing transaction details and verification URLs
-- **Network Support**: Works with Arbitrum One (mainnet), Arbitrum Sepolia (testnet), and local chains
+- **Network Support**: Works with Ethereum Mainnet, Optimism, Arbitrum One, Base, and local chains
+- **Bidirectional Network Switching**: Automatically syncs network selection between the app and MetaMask
+- **Transaction Status**: Real-time transaction status with pending and confirmed states
 - **Automatic Verification**: Verify timestamps directly from the proof files
 
 ### Security & Privacy
@@ -70,12 +72,18 @@ Requires browsers with File System Access API support:
 ### Creating Blockchain Timestamps
 1. Go to the "On-Chain Timestamping" tab
 2. Connect your Web3 wallet (MetaMask recommended)
-3. Load a `merkle-tree.json` file or paste a Merkle root
-4. Click "Create Timestamp on [Blockchain Name]"
-5. Confirm the transaction in your wallet
-6. Download the proof file for future verification
+3. Select your preferred network (Ethereum Mainnet, Optimism, Arbitrum One, or Base)
+4. Load a `merkle-tree.json` file or paste a Merkle root
+5. Click "Create Timestamp on [Blockchain Name]"
+6. Confirm the transaction in your wallet
+7. Monitor transaction status (pending confirmation → confirmed)
+8. Download the proof file for future verification
 
-**Contract Address (Arbitrum One):** [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://arbiscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+**Contract Addresses:**
+- **Ethereum Mainnet**: [`0xE1DEb3c75b5c32D672ac8287010C231f4C15033b`](https://etherscan.io/address/0xE1DEb3c75b5c32D672ac8287010C15033b)
+- **Optimism**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://optimistic.etherscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+- **Arbitrum One**: [`0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E`](https://arbiscan.io/address/0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E)
+- **Base**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://basescan.org/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
 
 ### Folder Policies
 - **Include Hidden Files**: Files/folders starting with "." (default: excluded)
@@ -142,7 +150,9 @@ This application implements blockchain timestamping, inspired by [OpenTimestamps
 - **Immutable Proofs**: Once committed to the blockchain, timestamps cannot be altered
 - **Public Verification**: Anyone can verify timestamps using the proof files
 - **Privacy-Preserving**: Only Merkle roots are stored on-chain, not your actual files
-- **Cost-Effective**: Low-cost timestamping on Arbitrum L2
+- **Multi-Chain Support**: Deployments on Ethereum Mainnet, Optimism, Arbitrum One, and Base
+- **Cost-Effective**: Low-cost timestamping on L2 networks
+- **Real-Time Status**: Transaction status tracking with pending and confirmed states
 
 For detailed information about timestamping concepts, use cases, and verification, see [TIMESTAMPING.md](TIMESTAMPING.md).
 

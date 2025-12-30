@@ -44,23 +44,29 @@ Update the contract address in `src/config.js`:
 
 ```javascript
 const defaults = {
+  1: "YOUR_ETHEREUM_MAINNET_ADDRESS", // Ethereum Mainnet
+  10: "YOUR_OPTIMISM_ADDRESS", // Optimism
   42161: "YOUR_ARBITRUM_ONE_ADDRESS", // Arbitrum One (Mainnet)
-  421614: "YOUR_ARBITRUM_SEPOLIA_ADDRESS", // Arbitrum Sepolia
+  8453: "YOUR_BASE_ADDRESS", // Base
   31337: "YOUR_LOCAL_ADDRESS", // Local Anvil
 };
 ```
 
-**Current Production Address:**
-- **Arbitrum One**: `0xA095c28448186ACC0e950A17b96879394f89C5B4`
+**Current Production Addresses:**
+- **Ethereum Mainnet**: `0xE1DEb3c75b5c32D672ac8287010C231f4C15033b`
+- **Optimism**: `0xA095c28448186ACC0e950A17b96879394f89C5B4`
+- **Arbitrum One**: `0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E`
+- **Base**: `0xA095c28448186ACC0e950A17b96879394f89C5B4`
 
 ### Step 4: Test Full Integration
 
 1. **Start the app**: `npm run dev`
 2. **Connect wallet** to your local chain
 3. **Generate a Merkle tree** from a folder
-4. **Enter your deployed contract address** in the "Contract Address" field
-5. **Click** "Commit to Arbitrum" - should work now! 🎉
-6. **Download proof file** and verify it contains:
+4. **Select your network** (Ethereum Mainnet, Optimism, Arbitrum One, or Base)
+5. **Click** "Create Timestamp on [Blockchain Name]" - should work now!
+6. **Monitor transaction status** (pending → confirmed)
+7. **Download proof file** and verify it contains:
    - Your Merkle root
    - Transaction details
    - Contract address you entered
@@ -96,9 +102,9 @@ Commitment details:
 Is committed after: true
 
 === Test 5: Test duplicate commitment ===
-✓ Duplicate commitment correctly rejected: Merkle root already committed
+PASS: Duplicate commitment correctly rejected: Merkle root already committed
 
-🎉 All tests completed successfully!
+All tests completed successfully!
 ```
 
 ## Troubleshooting
@@ -122,9 +128,10 @@ Is committed after: true
 
 Once local testing is successful:
 
-1. **Deploy to Arbitrum Sepolia** (testnet)
-2. **Test with real wallet** (not local accounts)
-3. **Deploy to Arbitrum One** (mainnet)
-4. **Update production contract addresses**
+1. **Deploy to Ethereum Mainnet**
+2. **Deploy to Optimism**
+3. **Deploy to Arbitrum One**
+4. **Deploy to Base**
+5. **Update production contract addresses**
 
-The contract is now ready for deployment! 🚀
+The contract is now ready for deployment!

@@ -468,7 +468,7 @@ export default function FileVerification({ limits }) {
             color: folderResult.ok ? "#2ecc71" : "#e74c3c",
             marginBottom: 12
           }}>
-            {folderResult.ok ? "✅ Folder Verified Successfully" : "❌ Folder Verification Failed"}
+            {folderResult.ok ? "Folder Verified Successfully" : "Folder Verification Failed"}
           </div>
 
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.88, lineHeight: 1.6 }}>
@@ -519,7 +519,7 @@ export default function FileVerification({ limits }) {
 
           {folderResult.verificationMode === "subset" && folderResult.ok && (
             <div style={{ marginTop: 12, padding: 10, background: "rgba(46, 204, 113, 0.1)", borderRadius: 8, fontSize: 13, color: "#2ecc71" }}>
-              ✅ All {folderResult.verifiedCount} file{folderResult.verifiedCount !== 1 ? 's' : ''} in the selected folder are verified to be part of the original Merkle tree.
+              All {folderResult.verifiedCount} file{folderResult.verifiedCount !== 1 ? 's' : ''} in the selected folder are verified to be part of the original Merkle tree.
             </div>
           )}
         </div>
@@ -533,7 +533,7 @@ export default function FileVerification({ limits }) {
             color: fileResult.ok ? "#2ecc71" : "#e74c3c",
             marginBottom: fileResult.ok ? 0 : 12
           }}>
-            {fileResult.ok ? "✅ File Verified Successfully" : "❌ File Verification Failed"}
+            {fileResult.ok ? "File Verified Successfully" : "File Verification Failed"}
           </div>
           {!fileResult.ok && fileResult.reason && (
             <div style={{
@@ -570,7 +570,7 @@ export default function FileVerification({ limits }) {
           borderRadius: 8,
           color: "#ff6b6b"
         }}>
-          ⚠️ {error}
+          WARNING: {error}
         </div>
       )}
     </div>

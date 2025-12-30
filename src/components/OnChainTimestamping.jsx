@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import BlockchainCommit from "./BlockchainCommit";
 import { NETWORK_IDS, NETWORK_NAMES, SCHEMA_VERSIONS } from "../lib/constants.js";
@@ -23,6 +23,68 @@ export default function OnChainTimestamping() {
   const [jsonData, setJsonData] = useState(null);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
+  const [switchingNetwork, setSwitchingNetwork] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Network parameters for MetaMask switching
+  const NETWORK_PARAMS = {
+    [NETWORK_IDS.ETHEREUM_MAINNET]: {
+      chainId: `0x${NETWORK_IDS.ETHEREUM_MAINNET.toString(16)}`,
+      chainName: 'Ethereum Mainnet',
+      nativeCurrency: {
+        name: 'Ether',
+        symbol: 'ETH',
+        decimals: 18,
+      },
+      rpcUrls: ['https://eth.llamarpc.com'],
+      blockExplorerUrls: ['https://etherscan.io'],
+    },
+    [NETWORK_IDS.OPTIMISM]: {
+      chainId: `0x${NETWORK_IDS.OPTIMISM.toString(16)}`,
+      chainName: 'Optimism',
+      nativeCurrency: {
+        name: 'Ether',
+        symbol: 'ETH',
+        decimals: 18,
+      },
+      rpcUrls: ['https://mainnet.optimism.io'],
+      blockExplorerUrls: ['https://optimistic.etherscan.io'],
+    },
+    [NETWORK_IDS.ARBITRUM_ONE]: {
+      chainId: `0x${NETWORK_IDS.ARBITRUM_ONE.toString(16)}`,
+      chainName: 'Arbitrum One',
+      nativeCurrency: {
+        name: 'Ether',
+        symbol: 'ETH',
+        decimals: 18,
+      },
+      rpcUrls: ['https://arb1.arbitrum.io/rpc'],
+      blockExplorerUrls: ['https://arbiscan.io'],
+    },
+    [NETWORK_IDS.BASE]: {
+      chainId: `0x${NETWORK_IDS.BASE.toString(16)}`,
+      chainName: 'Base',
+      nativeCurrency: {
+        name: 'Ether',
+        symbol: 'ETH',
+        decimals: 18,
+      },
+      rpcUrls: ['https://mainnet.base.org'],
+      blockExplorerUrls: ['https://basescan.org'],
+    },
+  };
+
+  /**
+   * Reset all timestamping-related state
+   * Called when network is switched to clear previous state
+   */
+  const resetState = () => {
+    setMerkleRoot("");
+    setJsonData(null);
+    setFileName("");
+    setError("");
+  };
 
   /**
    * Connect to Web3 wallet
@@ -49,7 +111,15 @@ export default function OnChainTimestamping() {
 
       // Check if on supported network
       if (!isSupportedNetwork(currentChainId)) {
-        setWalletError(`Please switch to a supported network: ${NETWORK_NAMES[NETWORK_IDS.ARBITRUM_ONE]}, ${NETWORK_NAMES[NETWORK_IDS.ARBITRUM_SEPOLIA]}, or ${NETWORK_NAMES[NETWORK_IDS.LOCAL_ANVIL]}`);
+        const supportedNames = [
+          NETWORK_NAMES[NETWORK_IDS.ETHEREUM_MAINNET],
+          NETWORK_NAMES[NETWORK_IDS.OPTIMISM],
+          NETWORK_NAMES[NETWORK_IDS.ARBITRUM_ONE],
+          NETWORK_NAMES[NETWORK_IDS.ARBITRUM_SEPOLIA],
+          NETWORK_NAMES[NETWORK_IDS.BASE],
+          NETWORK_NAMES[NETWORK_IDS.LOCAL_ANVIL],
+        ].filter(Boolean).join(', ');
+        setWalletError(`Please switch to a supported network: ${supportedNames}`);
         setConnecting(false);
         return;
       }
@@ -76,11 +146,132 @@ export default function OnChainTimestamping() {
     setWallet(null);
   };
 
-  const handleNetworkChange = (e) => {
-    const chain = e.target.value;
-    setSelectedChain(chain);
-    // Future: trigger network switch when other chains are enabled
+  /**
+   * Switch MetaMask to a specific network
+   * @param {number} targetChainId - Chain ID to switch to
+   */
+  const switchToNetwork = async (targetChainId) => {
+    if (!window.ethereum || !wallet) {
+      setWalletError('Wallet not connected');
+      return;
+    }
+
+    setSwitchingNetwork(true);
+    setWalletError(null);
+
+    try {
+      const networkParams = NETWORK_PARAMS[targetChainId];
+      if (!networkParams) {
+        throw new Error(`Network parameters not configured for chain ID ${targetChainId}`);
+      }
+
+      // Try to switch network first
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: networkParams.chainId }],
+        });
+      } catch (switchError) {
+        // If network is not added, add it
+        if (switchError.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [networkParams],
+          });
+        } else {
+          throw switchError;
+        }
+      }
+
+      // Update state after successful switch
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+      const newChainId = Number(network.chainId);
+
+      if (newChainId === targetChainId) {
+        setChainId(newChainId);
+        const signer = await provider.getSigner();
+        const address = await signer.getAddress();
+        
+        setWallet({
+          provider,
+          signer,
+          address,
+          chainId: newChainId
+        });
+        
+        // Reset timestamping state when network changes
+        resetState();
+      }
+    } catch (err) {
+      logError(err, "OnChainTimestamping.switchToNetwork");
+      setWalletError(getErrorMessage(err));
+    } finally {
+      setSwitchingNetwork(false);
+    }
   };
+
+  /**
+   * Handle network selection from custom dropdown
+   * @param {string} chainValue - Chain identifier
+   */
+  const handleNetworkSelect = async (chainValue) => {
+    setDropdownOpen(false);
+    setSelectedChain(chainValue);
+
+    if (!wallet) {
+      return; // Can't switch if not connected
+    }
+
+    // Map chain identifier to chain ID
+    let targetChainId = null;
+    if (chainValue === 'ethereum') {
+      targetChainId = NETWORK_IDS.ETHEREUM_MAINNET;
+    } else if (chainValue === 'optimism') {
+      if (chainId !== NETWORK_IDS.OPTIMISM) {
+        targetChainId = NETWORK_IDS.OPTIMISM;
+      } else {
+        return; // Already on Optimism
+      }
+    } else if (chainValue === 'base') {
+      if (chainId !== NETWORK_IDS.BASE) {
+        targetChainId = NETWORK_IDS.BASE;
+      } else {
+        return; // Already on Base
+      }
+    } else if (chainValue === 'arbitrum') {
+      // If already on Arbitrum Sepolia or Local Anvil, switch to Arbitrum One
+      if (chainId === NETWORK_IDS.ARBITRUM_SEPOLIA || chainId === NETWORK_IDS.LOCAL_ANVIL) {
+        targetChainId = NETWORK_IDS.ARBITRUM_ONE;
+      } else if (chainId !== NETWORK_IDS.ARBITRUM_ONE) {
+        targetChainId = NETWORK_IDS.ARBITRUM_ONE;
+      } else {
+        return; // Already on Arbitrum One
+      }
+    }
+
+    if (targetChainId && targetChainId !== chainId) {
+      await switchToNetwork(targetChainId);
+    }
+  };
+
+  /**
+   * Handle click outside dropdown to close it
+   */
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [dropdownOpen]);
 
   useEffect(() => {
     if (window.ethereum) {
@@ -92,8 +283,48 @@ export default function OnChainTimestamping() {
         }
       });
 
-      window.ethereum.on('chainChanged', () => {
-        window.location.reload();
+      window.ethereum.on('chainChanged', async (chainIdHex) => {
+        try {
+          const newChainId = parseInt(chainIdHex, 16);
+          setChainId(newChainId);
+
+          // If wallet is connected, update wallet state
+          if (wallet) {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const network = await provider.getNetwork();
+            const signer = await provider.getSigner();
+            const address = await signer.getAddress();
+
+            // Check if new network is supported
+            if (isSupportedNetwork(newChainId)) {
+              setWallet({
+                provider,
+                signer,
+                address,
+                chainId: newChainId
+              });
+              setWalletError(null);
+              // Reset timestamping state when network changes from MetaMask
+              resetState();
+            } else {
+              const supportedNames = [
+                NETWORK_NAMES[NETWORK_IDS.ETHEREUM_MAINNET],
+                NETWORK_NAMES[NETWORK_IDS.OPTIMISM],
+                NETWORK_NAMES[NETWORK_IDS.ARBITRUM_ONE],
+                NETWORK_NAMES[NETWORK_IDS.ARBITRUM_SEPOLIA],
+                NETWORK_NAMES[NETWORK_IDS.LOCAL_ANVIL],
+              ].filter(Boolean).join(', ');
+              setWalletError(`Unsupported network. Please switch to: ${supportedNames}`);
+              // Reset state even if network is unsupported
+              resetState();
+            }
+          } else {
+            // If wallet was disconnected but chain changed, still reset state
+            resetState();
+          }
+        } catch (err) {
+          logError(err, "OnChainTimestamping.chainChanged");
+        }
       });
 
       // Check if already connected
@@ -105,19 +336,23 @@ export default function OnChainTimestamping() {
             const signer = await provider.getSigner();
             const address = await signer.getAddress();
             const network = await provider.getNetwork();
+            const currentChainId = Number(network.chainId);
 
             setAccount(address);
-            setChainId(Number(network.chainId));
+            setChainId(currentChainId);
 
-            setWallet({
-              provider,
-              signer,
-              address,
-              chainId: Number(network.chainId)
-            });
+            // Only set wallet if on supported network
+            if (isSupportedNetwork(currentChainId)) {
+              setWallet({
+                provider,
+                signer,
+                address,
+                chainId: currentChainId
+              });
+            }
           }
         } catch (err) {
-          console.error('Error checking connection:', err);
+          logError(err, "OnChainTimestamping.checkConnection");
         }
       };
 
@@ -207,9 +442,27 @@ export default function OnChainTimestamping() {
    * @returns {string|null} Chain identifier
    */
   const getChainIdentifier = (id) => {
+    if (id === NETWORK_IDS.ETHEREUM_MAINNET) return 'ethereum';
+    if (id === NETWORK_IDS.OPTIMISM) return 'optimism';
+    if (id === NETWORK_IDS.BASE) return 'base';
     if (id === NETWORK_IDS.ARBITRUM_ONE || id === NETWORK_IDS.ARBITRUM_SEPOLIA) return 'arbitrum';
     if (id === NETWORK_IDS.LOCAL_ANVIL) return 'arbitrum'; // Local anvil treated as arbitrum
     return null;
+  };
+
+  /**
+   * Get icon path for chain identifier
+   * @param {string} chainIdentifier - Chain identifier ('ethereum', 'optimism', 'arbitrum', 'base')
+   * @returns {string} Icon file path
+   */
+  const getChainIcon = (chainIdentifier) => {
+    const iconMap = {
+      'ethereum': '/icons/ethereum.svg',
+      'optimism': '/icons/optimism.svg',
+      'arbitrum': '/icons/arbitrum.svg',
+      'base': '/icons/base.svg',
+    };
+    return iconMap[chainIdentifier] || '/icons/ethereum.svg';
   };
 
   // Update selectedChain when chainId changes
@@ -219,6 +472,7 @@ export default function OnChainTimestamping() {
       if (chainIdentifier) {
         setSelectedChain(chainIdentifier);
       }
+      // If on unsupported network, don't change selection
     } else {
       setSelectedChain('arbitrum'); // Default when disconnected
     }
@@ -255,25 +509,89 @@ export default function OnChainTimestamping() {
             </>
           )}
         </button>
-        <select
-          style={networkSelect}
-          value={wallet && chainId ? getChainIdentifier(chainId) || selectedChain : selectedChain}
-          onChange={handleNetworkChange}
-          aria-label="Select blockchain network"
-          disabled={!wallet}
-        >
-          <option value="arbitrum">
-            {wallet && chainId ? getNetworkName(chainId) : 'Arbitrum'}
-          </option>
-          <option value="ethereum" disabled>Ethereum Mainnet</option>
-          <option value="optimism" disabled>Optimism</option>
-          <option value="base" disabled>Base</option>
-        </select>
+        <div style={dropdownContainer} ref={dropdownRef}>
+          <button
+            type="button"
+            style={{
+              ...networkSelect,
+              ...networkSelectButton,
+              ...(dropdownOpen ? networkSelectButtonOpen : {}),
+              ...((!wallet || switchingNetwork) ? networkSelectButtonDisabled : {})
+            }}
+            onClick={() => !switchingNetwork && wallet && setDropdownOpen(!dropdownOpen)}
+            disabled={!wallet || switchingNetwork}
+            aria-label="Select blockchain network"
+            aria-expanded={dropdownOpen}
+            aria-haspopup="listbox"
+          >
+            <img 
+              src={getChainIcon(wallet && chainId ? getChainIdentifier(chainId) || selectedChain : selectedChain)} 
+              alt="" 
+              style={networkIcon}
+            />
+            <span style={networkSelectText}>
+              {wallet && chainId 
+                ? (getChainIdentifier(chainId) === 'ethereum' ? 'Ethereum Mainnet' :
+                   getChainIdentifier(chainId) === 'optimism' ? (getNetworkName(chainId) || 'Optimism') :
+                   getChainIdentifier(chainId) === 'base' ? (getNetworkName(chainId) || 'Base') :
+                   getChainIdentifier(chainId) === 'arbitrum' ? (getNetworkName(chainId) || 'Arbitrum One') :
+                   'Select Network')
+                : (selectedChain === 'ethereum' ? 'Ethereum Mainnet' :
+                   selectedChain === 'optimism' ? 'Optimism' :
+                   selectedChain === 'base' ? 'Base' :
+                   'Arbitrum One')}
+            </span>
+            <span style={dropdownArrow}>{dropdownOpen ? '▲' : '▼'}</span>
+          </button>
+          {dropdownOpen && wallet && !switchingNetwork && (
+            <div style={dropdownMenu} role="listbox">
+              <NetworkOption
+                chainId="ethereum"
+                label="Ethereum Mainnet"
+                icon={getChainIcon('ethereum')}
+                isSelected={selectedChain === 'ethereum'}
+                onClick={() => handleNetworkSelect('ethereum')}
+              />
+              <NetworkOption
+                chainId="optimism"
+                label={wallet && chainId && chainId === NETWORK_IDS.OPTIMISM
+                  ? getNetworkName(chainId)
+                  : 'Optimism'}
+                icon={getChainIcon('optimism')}
+                isSelected={selectedChain === 'optimism'}
+                onClick={() => handleNetworkSelect('optimism')}
+              />
+              <NetworkOption
+                chainId="arbitrum"
+                label={wallet && chainId && (chainId === NETWORK_IDS.ARBITRUM_ONE || chainId === NETWORK_IDS.ARBITRUM_SEPOLIA || chainId === NETWORK_IDS.LOCAL_ANVIL)
+                  ? getNetworkName(chainId)
+                  : 'Arbitrum One'}
+                icon={getChainIcon('arbitrum')}
+                isSelected={selectedChain === 'arbitrum'}
+                onClick={() => handleNetworkSelect('arbitrum')}
+              />
+              <NetworkOption
+                chainId="base"
+                label={wallet && chainId && chainId === NETWORK_IDS.BASE
+                  ? getNetworkName(chainId)
+                  : 'Base'}
+                icon={getChainIcon('base')}
+                isSelected={selectedChain === 'base'}
+                onClick={() => handleNetworkSelect('base')}
+              />
+            </div>
+          )}
+        </div>
+        {switchingNetwork && (
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+            Switching network...
+          </div>
+        )}
       </div>
 
       {walletError && (
         <div style={errorBox}>
-          ⚠️ {walletError}
+          WARNING: {walletError}
         </div>
       )}
 
@@ -320,6 +638,7 @@ export default function OnChainTimestamping() {
 
       <div style={section}>
         <BlockchainCommit
+          key={chainId || 'no-chain'}
           merkleRoot={isValidMerkleRootFormat(merkleRoot) ? merkleRoot : ""}
           jsonData={jsonData}
           wallet={wallet}
@@ -329,9 +648,59 @@ export default function OnChainTimestamping() {
 
       {error && (
         <div style={errorBox}>
-          ❌ {error}
+          ERROR: {error}
         </div>
       )}
+
+      {/* Documentation Links */}
+      <div style={docsLinksContainer}>
+        <div style={docsLinksLabel}>Documentation:</div>
+        <div style={docsLinks}>
+          <a 
+            href="README.md" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            style={docLink}
+            onMouseEnter={(e) => e.target.style.opacity = "1"}
+            onMouseLeave={(e) => e.target.style.opacity = "0.8"}
+          >
+            README
+          </a>
+          <span style={docLinkSeparator}>•</span>
+          <a 
+            href="TIMESTAMPING.md" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            style={docLink}
+            onMouseEnter={(e) => e.target.style.opacity = "1"}
+            onMouseLeave={(e) => e.target.style.opacity = "0.8"}
+          >
+            Timestamping Guide
+          </a>
+          <span style={docLinkSeparator}>•</span>
+          <a 
+            href="contracts/README.md" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            style={docLink}
+            onMouseEnter={(e) => e.target.style.opacity = "1"}
+            onMouseLeave={(e) => e.target.style.opacity = "0.8"}
+          >
+            Smart Contract
+          </a>
+          <span style={docLinkSeparator}>•</span>
+          <a 
+            href="contracts/DEPLOYMENT_GUIDE.md" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            style={docLink}
+            onMouseEnter={(e) => e.target.style.opacity = "1"}
+            onMouseLeave={(e) => e.target.style.opacity = "0.8"}
+          >
+            Deployment Guide
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
@@ -487,6 +856,52 @@ const statusDot = {
   display: "inline-block",
 };
 
+const docsLinksContainer = {
+  marginTop: 20,
+  paddingTop: 16,
+  borderTop: "1px solid rgba(255,255,255,0.06)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+};
+
+const docsLinksLabel = {
+  fontSize: 11,
+  opacity: 0.6,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  color: "#888",
+};
+
+const docsLinks = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const docLink = {
+  fontSize: 11,
+  color: "#667eea",
+  textDecoration: "none",
+  opacity: 0.8,
+  transition: "opacity 0.2s ease",
+};
+
+// Add hover effect via inline style with onMouseEnter/onMouseLeave
+// Note: CSS-in-JS hover requires event handlers, so we'll handle it in the component
+
+const docLinkSeparator = {
+  fontSize: 10,
+  opacity: 0.4,
+  color: "#666",
+};
+
+const dropdownContainer = {
+  position: "relative",
+  minWidth: 180,
+};
+
 const networkSelect = {
   background: "rgba(255,255,255,0.04)",
   color: "#cfcfcf",
@@ -496,8 +911,121 @@ const networkSelect = {
   fontSize: 12,
   outline: "none",
   cursor: "pointer",
-  minWidth: 100,
+  minWidth: 180,
 };
+
+const networkSelectButton = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  width: "100%",
+  justifyContent: "space-between",
+  transition: "all 0.2s ease",
+};
+
+const networkSelectButtonOpen = {
+  borderColor: "rgba(102, 126, 234, 0.4)",
+  background: "rgba(255,255,255,0.06)",
+};
+
+const networkSelectButtonDisabled = {
+  opacity: 0.5,
+  cursor: "not-allowed",
+};
+
+const networkSelectText = {
+  flex: 1,
+  textAlign: "left",
+};
+
+const networkIcon = {
+  width: 16,
+  height: 16,
+  flexShrink: 0,
+};
+
+const dropdownArrow = {
+  fontSize: 10,
+  opacity: 0.6,
+  flexShrink: 0,
+  transition: "transform 0.2s ease",
+};
+
+const dropdownMenu = {
+  position: "absolute",
+  top: "100%",
+  left: 0,
+  right: 0,
+  marginTop: 4,
+  background: "rgba(20, 20, 20, 0.98)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 10,
+  padding: 4,
+  zIndex: 1000,
+  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+  minWidth: 180,
+  whiteSpace: "nowrap",
+};
+
+const dropdownOption = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "8px 12px",
+  borderRadius: 8,
+  background: "transparent",
+  border: "none",
+  color: "#cfcfcf",
+  fontSize: 12,
+  cursor: "pointer",
+  outline: "none",
+  textAlign: "left",
+  width: "100%",
+  transition: "all 0.2s ease",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const dropdownOptionSelected = {
+  background: "rgba(102, 126, 234, 0.15)",
+  color: "#667eea",
+};
+
+/**
+ * Network option component with hover effects
+ * @param {Object} props - Component props
+ * @param {string} props.chainId - Chain identifier
+ * @param {string} props.label - Display label
+ * @param {string} props.icon - Icon file path
+ * @param {boolean} props.isSelected - Whether this option is selected
+ * @param {Function} props.onClick - Click handler
+ */
+function NetworkOption({ chainId, label, icon, isSelected, onClick }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <button
+      type="button"
+      style={{
+        ...dropdownOption,
+        ...(isSelected ? dropdownOptionSelected : {}),
+        ...(isHovered && !isSelected ? { background: "rgba(255,255,255,0.06)" } : {})
+      }}
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      role="option"
+      aria-selected={isSelected}
+    >
+      <img src={icon} alt="" style={networkIcon} />
+      <span>{label}</span>
+    </button>
+  );
+}
 
 const networkInfo = {
   fontSize: 11,

@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 /**
  * @title MerkleRootRegistry
- * @author Merkle Tool Team
+ * @author Mika Hirano
  * @notice A registry for committing Merkle roots to the blockchain for timestamping purposes.
  * @dev This contract allows users to commit Merkle roots with metadata for immutable timestamping.
  *      Each Merkle root can only be committed once, and metadata can be updated by the original committer.

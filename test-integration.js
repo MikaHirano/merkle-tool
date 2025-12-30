@@ -42,7 +42,7 @@ const CONTRACT_ABI = [
 ];
 
 async function testContract() {
-  console.log("🔍 Testing MerkleRootRegistry Contract");
+  console.log("Testing MerkleRootRegistry Contract");
   console.log("=====================================");
 
   try {
@@ -51,8 +51,8 @@ async function testContract() {
     const signer = await provider.getSigner();
     const address = await signer.getAddress();
 
-    console.log(`✅ Connected to: ${RPC_URL}`);
-    console.log(`✅ Using account: ${address}`);
+    console.log(`Connected to: ${RPC_URL}`);
+    console.log(`Using account: ${address}`);
 
     // Create contract instance
     const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
@@ -66,16 +66,16 @@ async function testContract() {
       generatedAt: new Date().toISOString()
     });
 
-    console.log(`\n📝 Test Merkle Root: ${testMerkleRoot}`);
-    console.log(`📄 Test Metadata: ${testMetadata}`);
+    console.log(`\nTest Merkle Root: ${testMerkleRoot}`);
+    console.log(`Test Metadata: ${testMetadata}`);
 
     // Test 1: Check initial state
-    console.log("\n1️⃣ Testing initial state...");
+    console.log("\n[1] Testing initial state...");
     const isCommittedBefore = await contract.isCommitted(testMerkleRoot);
     console.log(`   Is committed before: ${isCommittedBefore}`);
 
     // Test 2: Commit Merkle root
-    console.log("\n2️⃣ Committing Merkle root...");
+    console.log("\n[2] Committing Merkle root...");
     const tx = await contract.commitMerkleRoot(testMerkleRoot, testMetadata);
     console.log(`   Transaction hash: ${tx.hash}`);
 
@@ -84,7 +84,7 @@ async function testContract() {
     console.log(`   Gas used: ${receipt.gasUsed.toString()}`);
 
     // Test 3: Verify commitment
-    console.log("\n3️⃣ Verifying commitment...");
+    console.log("\n[3] Verifying commitment...");
     const commitment = await contract.getCommitment(testMerkleRoot);
     console.log(`   Merkle Root: ${commitment[0]}`);
     console.log(`   Committer: ${commitment[1]}`);
@@ -93,28 +93,28 @@ async function testContract() {
     console.log(`   Metadata: ${commitment[4]}`);
 
     // Test 4: Check committed status
-    console.log("\n4️⃣ Checking committed status...");
+    console.log("\n[4] Checking committed status...");
     const isCommittedAfter = await contract.isCommitted(testMerkleRoot);
     console.log(`   Is committed after: ${isCommittedAfter}`);
 
     // Test 5: Try duplicate commitment
-    console.log("\n5️⃣ Testing duplicate commitment (should fail)...");
+    console.log("\n[5] Testing duplicate commitment (should fail)...");
     try {
       await contract.commitMerkleRoot(testMerkleRoot, testMetadata);
-      console.log("   ❌ ERROR: Duplicate commitment should have failed!");
+      console.log("   ERROR: Duplicate commitment should have failed!");
     } catch (error) {
-      console.log(`   ✅ Duplicate correctly rejected: ${error.message}`);
+      console.log(`   PASS: Duplicate correctly rejected: ${error.message}`);
     }
 
-    console.log("\n🎉 All contract tests passed!");
-    console.log("\n📋 Next steps:");
+    console.log("\nAll contract tests passed!");
+    console.log("\nNext steps:");
     console.log("   1. Update contract address in BlockchainCommit.jsx");
     console.log("   2. Test full frontend integration with: npm run dev");
     console.log("   3. Generate a Merkle tree and commit it to blockchain");
 
   } catch (error) {
-    console.error("❌ Test failed:", error.message);
-    console.error("\n🔧 Troubleshooting:");
+    console.error("Test failed:", error.message);
+    console.error("\nTroubleshooting:");
     console.error("   - Make sure your local chain is running");
     console.error("   - Update CONTRACT_ADDRESS with your deployed contract");
     console.error("   - Check RPC_URL is correct for your chain");
