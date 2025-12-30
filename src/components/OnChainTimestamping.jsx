@@ -657,7 +657,7 @@ export default function OnChainTimestamping() {
         <div style={docsLinksLabel}>Documentation:</div>
         <div style={docsLinks}>
           <a 
-            href="README.md" 
+            href="https://github.com/MikaHirano/merkle-tool/blob/main/README.md" 
             target="_blank" 
             rel="noopener noreferrer" 
             style={docLink}
@@ -668,7 +668,7 @@ export default function OnChainTimestamping() {
           </a>
           <span style={docLinkSeparator}>•</span>
           <a 
-            href="TIMESTAMPING.md" 
+            href="https://github.com/MikaHirano/merkle-tool/blob/main/TIMESTAMPING.md" 
             target="_blank" 
             rel="noopener noreferrer" 
             style={docLink}
@@ -679,7 +679,7 @@ export default function OnChainTimestamping() {
           </a>
           <span style={docLinkSeparator}>•</span>
           <a 
-            href="contracts/README.md" 
+            href="https://github.com/MikaHirano/merkle-tool/blob/main/contracts/README.md" 
             target="_blank" 
             rel="noopener noreferrer" 
             style={docLink}
@@ -690,7 +690,7 @@ export default function OnChainTimestamping() {
           </a>
           <span style={docLinkSeparator}>•</span>
           <a 
-            href="contracts/DEPLOYMENT_GUIDE.md" 
+            href="https://github.com/MikaHirano/merkle-tool/blob/main/contracts/DEPLOYMENT_GUIDE.md" 
             target="_blank" 
             rel="noopener noreferrer" 
             style={docLink}
