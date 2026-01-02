@@ -100,7 +100,7 @@ export async function readFileWithErrorHandling(file) {
       return combined.buffer;
     } else {
       // Use arrayBuffer for smaller files (more efficient)
-      return await file.arrayBuffer();
+    return await file.arrayBuffer();
     }
   } catch (readError) {
     const errorMsg = readError?.name === 'NotAllowedError'

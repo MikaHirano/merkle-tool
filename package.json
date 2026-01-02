@@ -7,14 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backend": "node backend-server.js"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "cors": "^2.8.5",
     "ethers": "^6.8.0",
-    "viem": "^2.7.0",
-    "hash-wasm": "^4.10.1"
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.1.5",
+    "hash-wasm": "^4.10.1",
+    "opentimestamps": "^0.4.9",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

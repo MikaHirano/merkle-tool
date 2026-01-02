@@ -64,8 +64,8 @@ export default function App() {
 
           <nav style={tabBar} aria-label="Tabs">
             <div style={{ display: "flex", gap: 18 }}>
-              <Tab label="Generator" active={tab === "generator"} onClick={() => setTab("generator")} />
-              <Tab label="Verification" active={tab === "verify"} onClick={() => setTab("verify")} />
+            <Tab label="Generator" active={tab === "generator"} onClick={() => setTab("generator")} />
+            <Tab label="Verification" active={tab === "verify"} onClick={() => setTab("verify")} />
             </div>
             <Tab label="On-Chain Timestamping" active={tab === "timestamping"} onClick={() => setTab("timestamping")} />
           </nav>
@@ -74,29 +74,29 @@ export default function App() {
         {tab === "timestamping" ? (
           <OnChainTimestamping />
         ) : (
-          <section style={card}>
-              {loading && (
-                <div style={loadingState}>
-                  <div style={spinner}></div>
-                  <div>Loading component...</div>
-                </div>
-              )}
+        <section style={card}>
+          {loading && (
+            <div style={loadingState}>
+              <div style={spinner}></div>
+              <div>Loading component...</div>
+            </div>
+          )}
 
-              {!loading && loadErr && (
-                <div style={errorState}>
+          {!loading && loadErr && (
+            <div style={errorState}>
                   <div style={{ fontSize: 18, marginBottom: 8 }}>Component Load Error</div>
-                  <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 12 }}>
-                    Failed to load the requested component. This might be due to a network issue or browser compatibility.
-                  </div>
-                  <details style={{ fontSize: 12 }}>
-                    <summary style={{ cursor: "pointer", opacity: 0.7 }}>Technical details</summary>
-                    <pre style={{ ...errorBox, marginTop: 8 }}>{loadErr}</pre>
-                  </details>
-                </div>
-              )}
+              <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 12 }}>
+                Failed to load the requested component. This might be due to a network issue or browser compatibility.
+              </div>
+              <details style={{ fontSize: 12 }}>
+                <summary style={{ cursor: "pointer", opacity: 0.7 }}>Technical details</summary>
+                <pre style={{ ...errorBox, marginTop: 8 }}>{loadErr}</pre>
+              </details>
+            </div>
+          )}
 
               {!loading && !loadErr && Cmp && <Cmp />}
-            </section>
+        </section>
         )}
       </div>
     </div>

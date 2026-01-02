@@ -11,6 +11,7 @@ export const NETWORK_IDS = {
   ETHEREUM_MAINNET: 1,
   OPTIMISM: 10,
   BASE: 8453,
+  BITCOIN: -1, // Special ID for Bitcoin (not EVM chain)
 };
 
 // Network names
@@ -21,6 +22,7 @@ export const NETWORK_NAMES = {
   [NETWORK_IDS.ETHEREUM_MAINNET]: "Ethereum Mainnet",
   [NETWORK_IDS.OPTIMISM]: "Optimism",
   [NETWORK_IDS.BASE]: "Base",
+  [NETWORK_IDS.BITCOIN]: "Bitcoin",
 };
 
 // Explorer URLs
@@ -48,6 +50,10 @@ export const EXPLORER_URLS = {
   [NETWORK_IDS.LOCAL_ANVIL]: {
     base: "http://localhost:8545",
     name: "Local Anvil",
+  },
+  [NETWORK_IDS.BITCOIN]: {
+    base: "https://blockstream.info",
+    name: "Blockstream",
   },
 };
 
@@ -107,6 +113,7 @@ export function getBlockchainShortName(chainId) {
     [NETWORK_IDS.LOCAL_ANVIL]: "local",
     [NETWORK_IDS.OPTIMISM]: "optimism",
     [NETWORK_IDS.BASE]: "base",
+    [NETWORK_IDS.BITCOIN]: "bitcoin",
   };
   return mapping[chainId] || `chain-${chainId}`;
 }

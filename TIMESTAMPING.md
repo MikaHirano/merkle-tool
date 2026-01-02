@@ -2,17 +2,37 @@
 
 ## Overview
 
-This application provides **blockchain timestamping** capabilities, allowing you to create cryptographic proofs that your files existed at a specific point in time. This is inspired by [OpenTimestamps](https://opentimestamps.org/), a decentralized timestamping protocol, but implemented using Ethereum and Arbitrum blockchains for enhanced security and decentralization.
+This application provides **blockchain timestamping** capabilities, allowing you to create cryptographic proofs that your files existed at a specific point in time. The application supports both Ethereum-based blockchains (Ethereum, Optimism, Arbitrum, Base) via smart contracts and Bitcoin via the [OpenTimestamps](https://opentimestamps.org/) protocol.
 
 ## What is Timestamping?
 
 Timestamping is the process of proving that certain data existed at a specific point in time. In the context of this application:
 
 1. **You generate a Merkle root** from your files/folders
-2. **You commit this root to the blockchain** (Ethereum Mainnet or Arbitrum)
+2. **You commit this root to the blockchain** (Ethereum Mainnet, Optimism, Arbitrum One, Base, or Bitcoin)
 3. **The blockchain provides immutable proof** that your data existed when the transaction was included in a block
 
 This creates a **cryptographic proof** that cannot be forged or backdated, as it relies on the blockchain's consensus mechanism.
+
+## Timestamping Methods
+
+This application supports two different timestamping approaches:
+
+### Ethereum-Based Chains (Smart Contracts)
+- **Networks**: Ethereum Mainnet, Optimism, Arbitrum One, Base
+- **Method**: Smart contract transactions
+- **Requires**: Web3 wallet (MetaMask, etc.)
+- **Confirmation**: Fast (~1-2 seconds for L2, ~12 seconds for Ethereum)
+- **Cost**: Gas fees (low on L2, moderate on Ethereum mainnet)
+- **Proof Format**: JSON files with transaction details
+
+### Bitcoin (OpenTimestamps Protocol)
+- **Network**: Bitcoin
+- **Method**: OpenTimestamps calendar servers
+- **Requires**: No wallet (uses public calendar servers)
+- **Confirmation**: ~10 minutes (Bitcoin block time)
+- **Cost**: Very low (aggregated into Bitcoin transactions)
+- **Proof Format**: `.ots` binary files or JSON with embedded OTS data
 
 ## How It Works
 
@@ -28,6 +48,8 @@ The Merkle root is deterministic - the same files will always produce the same r
 
 ### Step 2: Commit to Blockchain
 
+#### For Ethereum-Based Chains (Ethereum, Optimism, Arbitrum, Base)
+
 When you click "Create Timestamp on [Blockchain Name]":
 
 1. **Your wallet connects** to the selected blockchain (Ethereum Mainnet, Optimism, Arbitrum One, or Base)
@@ -39,6 +61,45 @@ When you click "Create Timestamp on [Blockchain Name]":
 7. **Explorer links become available** - view the transaction and contract on Etherscan, Optimistic Etherscan, Arbiscan, or Basescan
 
 **Network Switching**: The app supports bidirectional network switching - if you change networks in MetaMask, the app updates automatically, and vice versa. When switching networks, the timestamping state is automatically reset to prevent confusion.
+
+#### For Bitcoin (OpenTimestamps)
+
+**Prerequisites**: The backend server must be running (`npm run backend`). Bitcoin timestamping requires a Node.js backend because the OpenTimestamps library cannot run directly in browsers.
+
+When you click "Create Timestamp on Bitcoin":
+
+1. **No wallet required** - Bitcoin timestamping uses public OpenTimestamps calendar servers
+2. **Backend proxy** - Your Merkle root hash is sent to the backend server
+3. **Initial stamp** - Backend submits your hash to OpenTimestamps pool servers (aggregation endpoints for faster processing)
+4. **Receive `.ots` file** - You receive an initial OpenTimestamps proof file (binary format)
+5. **Status: Pending** - The app shows "Pending" status while waiting for Bitcoin block inclusion
+6. **Automatic polling** - The app automatically checks for upgrades with exponential backoff:
+   - First check: 2 minutes
+   - Second check: 5 minutes
+   - Third check: 10 minutes
+   - Subsequent checks: 20 minutes
+7. **Upgrade process** - Backend queries calendar servers to upgrade the proof
+8. **Status: Anchored** - Once included in a Bitcoin block (~10 minutes), status changes to "Anchored" with block height and hash
+9. **Status: Confirmed** - After checking confirmations, status shows "Confirmed" with confirmation count
+10. **Download proof** - Download the `.ots` file for verification using OpenTimestamps CLI tools
+
+**Two-Step Process**: Bitcoin timestamping uses a two-step process:
+- **Stamp**: Initial submission to pool servers (immediate, returns `.ots` file)
+- **Upgrade**: Periodic checks with calendar servers until Bitcoin attestation is found (~10 minutes average)
+
+**Status States:**
+- **Pending**: Timestamp submitted, no Bitcoin attestation yet
+- **Anchored**: Bitcoin block header attestation exists (includes block height and hash)
+- **Confirmed**: Anchored + confirmations checked (shows confirmation count)
+
+**Manual Check**: Use the "Check Upgrade" button to manually trigger an upgrade check without waiting for the automatic polling interval.
+
+**Backend Architecture**: The backend server (`backend-server.js`) acts as a proxy:
+- Uses the official `opentimestamps` npm package
+- Handles stamping via pool servers (`/api/stamp` endpoint)
+- Handles upgrading via calendar servers (`/api/upgrade` endpoint)
+- Implements security: CORS, rate limiting, input validation, request timeouts
+- Provides health check endpoint (`/api/health`)
 
 ### Step 3: Verification
 
@@ -61,16 +122,17 @@ This application shares core concepts with [OpenTimestamps](https://opentimestam
 
 ### Differences
 
-| Feature | OpenTimestamps | This Application |
-|---------|---------------|------------------|
-| **Blockchain** | Bitcoin | Ethereum Mainnet, Optimism, Arbitrum One, Base (Ethereum L2) |
-| **Cost** | Very low (aggregated) | Low (L2 gas fees) or moderate (Ethereum mainnet) |
-| **Confirmation** | ~10 minutes | ~1-2 seconds (L2) or ~12 seconds (Ethereum) |
-| **Metadata** | Minimal | Rich (file count, sizes, etc.) |
-| **Proof Format** | `.ots` files | `.json` files |
-| **Verification** | Command-line tools | Web interface |
-| **Network Switching** | Single chain | Bidirectional sync with MetaMask |
-| **Transaction Status** | Basic | Real-time pending/confirmed states |
+| Feature | OpenTimestamps (Bitcoin) | Ethereum-Based Chains | This Application (Both) |
+|---------|-------------------------|----------------------|------------------------|
+| **Blockchain** | Bitcoin | Ethereum Mainnet, Optimism, Arbitrum One, Base | Both supported |
+| **Cost** | Very low (aggregated) | Low (L2) or moderate (Ethereum) | Varies by chain |
+| **Confirmation** | ~10 minutes | ~1-2 seconds (L2) or ~12 seconds (Ethereum) | Depends on chain |
+| **Wallet Required** | No | Yes | Bitcoin: No, EVM: Yes |
+| **Metadata** | Minimal | Rich (file count, sizes, etc.) | Rich for EVM, minimal for Bitcoin |
+| **Proof Format** | `.ots` files | `.json` files | Both supported |
+| **Verification** | Command-line tools | Web interface | Web interface + CLI tools |
+| **Network Switching** | Single chain | Bidirectional sync with MetaMask | EVM: Yes, Bitcoin: N/A |
+| **Transaction Status** | Basic | Real-time pending/confirmed states | Real-time for EVM, polling for Bitcoin |
 
 ### Multi-Chain Support
 
@@ -101,14 +163,30 @@ This application supports multiple networks:
 - **Ethereum compatibility**: Uses the same security model as Ethereum
 - **Coinbase integration**: Built by Coinbase on the OP Stack
 
-**Bidirectional Network Switching:**
+**Bitcoin (OpenTimestamps):**
+- **No wallet required**: Uses public OpenTimestamps calendar servers
+- **Backend required**: Requires Node.js backend server (runs separately via `npm run backend`)
+- **Very low cost**: Aggregated into Bitcoin transactions (essentially free)
+- **Decentralized**: Relies on Bitcoin's security and OpenTimestamps calendar servers
+- **Two-step process**: Initial stamp via pool servers, then upgrade via calendar servers
+- **Status tracking**: Three states (pending → anchored → confirmed) with automatic polling
+- **Exponential backoff**: Polling intervals increase (2m → 5m → 10m → 20m) to reduce server load
+- **Standard format**: Uses OpenTimestamps `.ots` proof format (binary)
+- **Verification**: Can be verified using OpenTimestamps command-line tools (`ots verify timestamp.ots`)
+- **Block height confirmations**: Calculates confirmations using `tipHeight - blockHeight + 1`
+- **Multiple API sources**: Uses `mempool.space` and `blockstream.info` with fallback for robustness
+
+**Bidirectional Network Switching (EVM Chains Only):**
 - The app automatically syncs with MetaMask network changes
 - Users can switch networks from either the app or MetaMask
 - Contract addresses are automatically selected based on the connected network
+- Bitcoin selection doesn't require wallet connection
 
 ## Proof File Format
 
-After creating a timestamp, you receive a proof file (e.g., `merkle-proof-ethereum-20240101-a1b2c3d4.json`) with this structure. The filename includes the blockchain name to prevent conflicts when the same Merkle root is committed to multiple chains:
+### Ethereum-Based Chains
+
+After creating a timestamp on an Ethereum-based chain, you receive a proof file (e.g., `merkle-proof-ethereum-20240101-a1b2c3d4.json`) with this structure. The filename includes the blockchain name to prevent conflicts when the same Merkle root is committed to multiple chains:
 
 ```json
 {
@@ -164,6 +242,27 @@ After creating a timestamp, you receive a proof file (e.g., `merkle-proof-ethere
   }
 }
 ```
+
+**Bitcoin Proof Files:**
+
+Bitcoin timestamps use the standard OpenTimestamps `.ots` binary format. The app downloads the `.ots` file directly, which can be verified using OpenTimestamps command-line tools.
+
+**Verification:**
+```bash
+# Install OpenTimestamps CLI tools
+pip install opentimestamps-client
+
+# Verify a timestamp
+ots verify timestamp.ots
+```
+
+**`.ots` File Format:**
+- Binary format following OpenTimestamps protocol specification
+- Contains Merkle tree structure linking your hash to Bitcoin block headers
+- Includes attestations from calendar servers
+- Can be upgraded independently using `ots upgrade timestamp.ots`
+
+**Note**: The app no longer generates JSON proof files for Bitcoin timestamps. Only the `.ots` binary file is provided, which is the standard format for OpenTimestamps verification.
 
 ## Use Cases
 
@@ -262,6 +361,79 @@ This ensures:
 - **Efficient verification** - Can verify individual files without full tree
 - **Standard format** - Compatible with common Merkle tree implementations
 
+### Bitcoin OpenTimestamps Implementation
+
+#### Backend Architecture
+
+The Bitcoin timestamping feature uses a **backend proxy architecture** due to browser limitations:
+
+**Frontend (`src/lib/opentimestamps.js`):**
+- Client-side library that communicates with backend API
+- Handles retry logic with exponential backoff for connection errors
+- Implements health checks with caching (10-second TTL)
+- Provides status tracking and error handling
+
+**Backend (`backend-server.js`):**
+- Express.js server using official `opentimestamps` npm package
+- **Stamp endpoint** (`POST /api/stamp`):
+  - Receives 32-byte Merkle root (hex string)
+  - Creates `DetachedTimestampFile` using `OpenTimestamps.DetachedTimestampFile.fromHash()`
+  - Submits to pool servers with `m: 2` (minimum 2 successful submissions)
+  - Returns `.ots` file as byte array
+  - Validates no double-hashing (ensures digest is timestamped directly)
+- **Upgrade endpoint** (`POST /api/upgrade`):
+  - Receives `.ots` file (byte array)
+  - Deserializes using `OpenTimestamps.DetachedTimestampFile.deserialize()`
+  - Calls `OpenTimestamps.upgrade()` with calendar servers
+  - Checks for Bitcoin attestations using `instanceof BitcoinBlockHeaderAttestation`
+  - Returns upgraded `.ots` file and attestation status
+- **Health endpoint** (`GET /api/health`): Simple health check
+
+#### Status Detection
+
+**Bitcoin Attestation Detection:**
+- Primary: Uses `instanceof OpenTimestamps.Notary.BitcoinBlockHeaderAttestation`
+- Fallback: Checks for Bitcoin-specific fields (`blockHash` or `header` AND `height`)
+- Avoids fragile `constructor.name` checks (minification-safe)
+
+**Confirmation Calculation:**
+- Uses block height: `confirmations = tipHeight - blockHeight + 1`
+- Fetches tip height from multiple sources (`mempool.space`, `blockstream.info`)
+- Uses `Promise.any` with timeouts for robustness
+- Caches tip height for 45 seconds to reduce API calls
+
+#### Polling Mechanism
+
+**Exponential Backoff with Jitter:**
+- Initial delay: 2 minutes
+- Subsequent delays: 5m, 10m, 20m
+- Prevents hammering calendar servers
+- Automatically pauses if backend is unavailable
+
+**Polling States:**
+- **Active**: When status is `pending` or `anchored`
+- **Paused**: When backend is unavailable or status is `confirmed`
+- **Manual**: User can trigger immediate check via "Check Upgrade" button
+
+#### Security Features
+
+**No Double-Hashing:**
+- Merkle root (32-byte SHA-256 digest) is timestamped directly
+- Uses `fromHash()` constructor, not `fromBytes()` (which would re-hash)
+- Validated on backend to ensure digest matches provided Merkle root
+
+**Input Validation:**
+- Hex string format validation (64 characters, valid hex)
+- OTS file format validation (magic bytes: `00 4f 70 65 6e 54 69 6d 65 73 74 61 6d 70 73`)
+- Array size limits (max 1MB)
+- Request size limits (1MB JSON payloads)
+
+**Error Handling:**
+- Retry logic with exponential backoff for transient failures
+- Health checks before critical operations
+- Graceful degradation when backend is unavailable
+- User-friendly error messages
+
 ### Smart Contract
 
 The `MerkleRootRegistry` contract is deployed on multiple networks:
@@ -282,12 +454,13 @@ The `MerkleRootRegistry` contract is deployed on multiple networks:
 ### Q: How much does it cost?
 
 A: The cost depends on the network:
+- **Bitcoin**: Essentially free (aggregated into Bitcoin transactions via OpenTimestamps calendar servers)
 - **Arbitrum One**: Typically $0.01-$0.10 per timestamp (L2 fees)
 - **Optimism**: Typically $0.01-$0.10 per timestamp (L2 fees)
 - **Base**: Typically $0.01-$0.10 per timestamp (L2 fees)
 - **Ethereum Mainnet**: Typically $1-$10 per timestamp (mainnet fees)
 
-All networks are much cheaper than traditional notarization services.
+All networks are much cheaper than traditional notarization services. Bitcoin is the most cost-effective option, though it requires waiting ~10 minutes for confirmation.
 
 ### Q: Can I timestamp individual files?
 
@@ -312,9 +485,34 @@ A: Your actual files are never uploaded. Only the Merkle root (a 32-byte hash) i
 ### Q: Can I verify timestamps without the app?
 
 A: Yes! You can verify timestamps by:
-- Checking the contract on Etherscan (Ethereum), Optimistic Etherscan (Optimism), Arbiscan (Arbitrum), or Basescan (Base)
-- Regenerating the Merkle root using any compatible tool
-- Comparing the roots
+- **Ethereum-based chains**: Checking the contract on Etherscan (Ethereum), Optimistic Etherscan (Optimism), Arbiscan (Arbitrum), or Basescan (Base)
+- **Bitcoin**: Using OpenTimestamps command-line tools: `ots verify timestamp.ots`
+- **All chains**: Regenerating the Merkle root using any compatible tool and comparing the roots
+
+### Q: Do I need a wallet for Bitcoin timestamping?
+
+A: No! Bitcoin timestamping uses OpenTimestamps calendar servers and doesn't require a wallet connection. However, you **do need to run the backend server** (`npm run backend`) because the OpenTimestamps library requires Node.js and cannot run directly in browsers. Simply select "Bitcoin" from the network dropdown and create your timestamp. The backend server handles communication with OpenTimestamps calendar servers.
+
+### Q: Why does Bitcoin timestamping require a backend server?
+
+A: The official `opentimestamps` JavaScript library requires Node.js and cannot run in browsers. Additionally, calendar servers may have CORS restrictions. The backend server acts as a proxy, handling all OpenTimestamps operations securely with rate limiting and input validation.
+
+### Q: What are the status states for Bitcoin timestamps?
+
+A: Bitcoin timestamps have three states:
+- **Pending**: Timestamp submitted to calendar server, waiting for Bitcoin block inclusion (~10 minutes)
+- **Anchored**: Timestamp included in a Bitcoin block (shows block height and hash)
+- **Confirmed**: Anchored + confirmations checked (shows confirmation count)
+
+### Q: How does the automatic polling work?
+
+A: The app automatically checks for upgrades with exponential backoff to reduce server load:
+- First check: 2 minutes after stamp
+- Second check: 5 minutes after first check
+- Third check: 10 minutes after second check
+- Subsequent checks: 20 minutes apart
+
+You can also manually check using the "Check Upgrade" button.
 
 ## Further Reading
 

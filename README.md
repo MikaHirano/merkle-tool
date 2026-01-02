@@ -1,10 +1,10 @@
 # Merkle Tool
 
-A web-based tool for generating and verifying Merkle trees from files and folders using SHA-256 cryptographic hashing. Built with React and Vite, this tool provides local-only, client-side processing for secure file integrity verification and **blockchain timestamping** on Ethereum and Arbitrum.
+A web-based tool for generating and verifying Merkle trees from files and folders using SHA-256 cryptographic hashing. Built with React and Vite, this tool provides local-only, client-side processing for secure file integrity verification and **blockchain timestamping** on Ethereum, Optimism, Arbitrum, Base, and Bitcoin.
 
 ## Blockchain Timestamping
 
-Create immutable timestamps of your files on Ethereum and Arbitrum blockchains! This feature is inspired by [OpenTimestamps](https://opentimestamps.org/) and allows you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
+Create immutable timestamps of your files on Ethereum, Optimism, Arbitrum, Base, and Bitcoin blockchains! This feature supports both Ethereum-based smart contracts and Bitcoin via the [OpenTimestamps](https://opentimestamps.org/) protocol, allowing you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
 
 ## Features
 
@@ -25,10 +25,12 @@ Create immutable timestamps of your files on Ethereum and Arbitrum blockchains! 
 - **Large File Support**: Stream-based hashing for verification of files of any size
 
 ### Blockchain Timestamping
-- **On-Chain Commitments**: Commit Merkle roots to Ethereum, Optimism, Arbitrum, and Base blockchains for immutable timestamping
+- **On-Chain Commitments**: Commit Merkle roots to Ethereum, Optimism, Arbitrum, Base, and Bitcoin blockchains for immutable timestamping
+- **Ethereum-Based Chains**: Smart contract-based timestamping on Ethereum Mainnet, Optimism, Arbitrum One, and Base (requires wallet connection)
+- **Bitcoin Timestamping**: OpenTimestamps protocol for Bitcoin timestamping (no wallet required, uses calendar servers)
 - **Proof Generation**: Download proof files containing transaction details, blockchain metadata, and verification URLs
-- **Network Support**: Works with Ethereum Mainnet, Optimism, Arbitrum One, Base, and local chains
-- **Bidirectional Network Switching**: Automatically syncs network selection between the app and MetaMask
+- **Network Support**: Works with Ethereum Mainnet, Optimism, Arbitrum One, Base, Bitcoin, and local chains
+- **Bidirectional Network Switching**: Automatically syncs network selection between the app and MetaMask (EVM chains)
 - **Transaction Status**: Real-time transaction status with pending confirmation and confirmed states
 - **Animated Loading Indicators**: Visual feedback during transaction processing
 - **State Management**: Automatic state reset when switching networks
@@ -78,6 +80,8 @@ Requires browsers with File System Access API support:
 3. Use "Verify Single File" to check individual files
 
 ### Creating Blockchain Timestamps
+
+**For Ethereum-Based Chains (Ethereum, Optimism, Arbitrum, Base):**
 1. Go to the "On-Chain Timestamping" tab
 2. Connect your Web3 wallet (MetaMask recommended)
 3. Select your preferred network (Ethereum Mainnet, Optimism, Arbitrum One, or Base)
@@ -86,6 +90,23 @@ Requires browsers with File System Access API support:
 6. Confirm the transaction in your wallet
 7. Monitor transaction status (pending confirmation → confirmed)
 8. Download the proof file for future verification
+
+**For Bitcoin (OpenTimestamps):**
+1. **Start the backend server** (required): Run `npm run backend` in a separate terminal
+2. Go to the "On-Chain Timestamping" tab
+3. Select "Bitcoin" from the network dropdown (no wallet required)
+4. Load a `merkle-tree.json` file or paste a Merkle root
+5. Click "Create Timestamp on Bitcoin"
+6. **Initial stamp**: Your Merkle root is submitted to OpenTimestamps calendar servers (via backend proxy)
+7. **Status tracking**: The app shows three status states:
+   - **Pending**: Timestamp submitted, waiting for Bitcoin block inclusion (~10 minutes)
+   - **Anchored**: Included in a Bitcoin block (shows block height and hash)
+   - **Confirmed**: Anchored + confirmations checked (shows confirmation count)
+8. **Automatic polling**: The app automatically checks for upgrades with exponential backoff (2m, 5m, 10m, 20m intervals)
+9. **Manual check**: Use "Check Upgrade" button to manually check status
+10. Download the `.ots` proof file for verification
+
+**Note**: Bitcoin timestamping requires a backend server running because the OpenTimestamps library requires Node.js. The backend acts as a proxy between the browser and OpenTimestamps calendar servers.
 
 **Contract Addresses:**
 - **Ethereum Mainnet**: [`0xE1DEb3c75b5c32D672ac8287010C231f4C15033b`](https://etherscan.io/address/0xE1DEb3c75b5c32D672ac8287010C15033b)
@@ -106,12 +127,38 @@ npm install
 # Start development server
 npm run dev
 
+# Start backend server (for OpenTimestamps)
+npm run backend
+
 # Build for production
 npm run build
 
 # Run linting
 npm run lint
 ```
+
+## Production Deployment
+
+For production deployment, see [PRODUCTION.md](PRODUCTION.md) for detailed instructions.
+
+**Quick Start:**
+1. Set environment variables (see `.env.example`)
+2. Build frontend: `npm run build`
+3. Deploy `dist/` directory to your hosting service
+4. Deploy backend server (see PRODUCTION.md for options)
+5. Configure CORS and environment variables
+
+**Environment Variables:**
+
+**Frontend (.env):**
+- `VITE_BACKEND_URL` - Backend server URL (e.g., `http://localhost:3001` for development, `https://api.yourdomain.com` for production)
+
+**Backend:**
+- `PORT` - Backend server port (default: 3001)
+- `NODE_ENV` - Node environment (`development` or `production`, required for security)
+- `CORS_ORIGIN` - Allowed CORS origins (comma-separated, required in production)
+
+See `.env.example` for a complete template.
 
 ## Architecture
 
@@ -120,6 +167,31 @@ npm run lint
 - **File Access**: File System Access API
 - **Build Tool**: Vite with React plugin
 - **Styling**: Inline styles with dark theme
+- **Backend Proxy**: Node.js Express server for Bitcoin OpenTimestamps operations (required for Bitcoin timestamping)
+
+### Bitcoin OpenTimestamps Architecture
+
+The Bitcoin timestamping feature uses a **backend proxy architecture**:
+
+1. **Frontend** (`src/components/BitcoinTimestamping.jsx`): React component handling UI and user interactions
+2. **Frontend Library** (`src/lib/opentimestamps.js`): Client-side library that communicates with backend API
+3. **Backend Server** (`backend-server.js`): Express.js server that:
+   - Uses the official `opentimestamps` npm package (requires Node.js)
+   - Handles stamping operations via OpenTimestamps pool servers
+   - Handles upgrade operations via OpenTimestamps calendar servers
+   - Provides REST API endpoints (`/api/stamp`, `/api/upgrade`, `/api/health`)
+   - Implements security features (CORS, rate limiting, input validation)
+
+**Why a backend proxy?**
+- The `opentimestamps` JavaScript library requires Node.js and cannot run directly in browsers
+- Calendar servers may have CORS restrictions
+- Provides centralized security controls (rate limiting, input validation)
+- Allows for better error handling and logging
+
+**Status States:**
+- **Pending**: Timestamp submitted to calendar server, waiting for Bitcoin block inclusion
+- **Anchored**: Timestamp included in a Bitcoin block (has Bitcoin attestation)
+- **Confirmed**: Anchored + confirmations checked (shows block height and confirmation count)
 
 ## File Structure
 
@@ -129,16 +201,20 @@ src/
 │   ├── MerkleRootGenerator.jsx    # Tree generation UI
 │   ├── FileVerification.jsx       # Verification UI
 │   ├── OnChainTimestamping.jsx   # Blockchain timestamping UI
+│   ├── BitcoinTimestamping.jsx   # Bitcoin OpenTimestamps UI
 │   ├── BlockchainCommit.jsx      # Commit to blockchain component
 │   └── ErrorBoundary.jsx          # Error handling component
 ├── lib/
 │   ├── merkle.js                  # Core cryptographic functions
+│   ├── opentimestamps.js         # OpenTimestamps client library (frontend)
+│   ├── mempool.js                # Mempool.space API integration
 │   ├── utils.jsx                  # Shared utilities
 │   ├── constants.js               # Application constants
 │   ├── validation.js              # Input validation utilities
 │   └── errorHandler.js            # Error handling utilities
 ├── config.js                      # Configuration (contract addresses, etc.)
 └── App.jsx                        # Main application with routing
+backend-server.js                   # Backend proxy for OpenTimestamps (Node.js)
 ```
 
 ## Security Considerations
@@ -158,7 +234,7 @@ This application implements blockchain timestamping, inspired by [OpenTimestamps
 - **Immutable Proofs**: Once committed to the blockchain, timestamps cannot be altered
 - **Public Verification**: Anyone can verify timestamps using the proof files
 - **Privacy-Preserving**: Only Merkle roots are stored on-chain, not your actual files
-- **Multi-Chain Support**: Deployments on Ethereum Mainnet, Optimism, Arbitrum One, and Base
+- **Multi-Chain Support**: Deployments on Ethereum Mainnet, Optimism, Arbitrum One, Base, and Bitcoin (via OpenTimestamps)
 - **Cost-Effective**: Low-cost timestamping on L2 networks
 - **Real-Time Status**: Transaction status tracking with pending and confirmed states
 

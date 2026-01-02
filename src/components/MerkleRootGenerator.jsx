@@ -233,7 +233,7 @@ export default function MerkleRootGenerator() {
         }
 
         const { file, relPath } = filtered[i];
-        
+
         // Update progress BEFORE processing to show current file being processed
         updateProgressThrottled(i + 1, filtered.length);
         
@@ -287,7 +287,7 @@ export default function MerkleRootGenerator() {
           }
         } else {
           // Use regular approach for smaller files
-          const bytes = await readFileWithErrorHandling(file);
+        const bytes = await readFileWithErrorHandling(file);
           contentHashBytes = await sha256Bytes(bytes);
           
           // Update time estimation after file is processed
@@ -354,7 +354,7 @@ export default function MerkleRootGenerator() {
       } else {
         logError(e, "MerkleRootGenerator.chooseFolderAndGenerate");
         setError(errorMsg);
-        setStatus("Idle.");
+      setStatus("Idle.");
       }
     } finally {
       setIsProcessing(false);
@@ -376,7 +376,7 @@ export default function MerkleRootGenerator() {
       setStatus("Computing hash…");
       setFileName(f.name);
       setFileSize(f.size);
-      
+
       // Initialize time estimation for single file processing
       setTotalBytesToProcess(f.size);
       setBytesProcessed(0);

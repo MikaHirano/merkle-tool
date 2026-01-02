@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import BlockchainCommit from "./BlockchainCommit";
+import BitcoinTimestamping from "./BitcoinTimestamping";
 import { NETWORK_IDS, NETWORK_NAMES, SCHEMA_VERSIONS } from "../lib/constants.js";
 import { normalizeMerkleRoot, isValidMerkleRootFormat, validateJSON } from "../lib/validation.js";
 import { getErrorMessage, logError } from "../lib/errorHandler.js";
@@ -17,7 +18,7 @@ export default function OnChainTimestamping() {
   const [chainId, setChainId] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [walletError, setWalletError] = useState(null);
-  const [selectedChain, setSelectedChain] = useState("arbitrum");
+  const [selectedChain, setSelectedChain] = useState("ethereum");
   
   const [merkleRoot, setMerkleRoot] = useState("");
   const [jsonData, setJsonData] = useState(null);
@@ -26,6 +27,7 @@ export default function OnChainTimestamping() {
   const [switchingNetwork, setSwitchingNetwork] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const selectedChainRef = useRef(selectedChain);
 
   // Network parameters for MetaMask switching
   const NETWORK_PARAMS = {
@@ -218,9 +220,16 @@ export default function OnChainTimestamping() {
   const handleNetworkSelect = async (chainValue) => {
     setDropdownOpen(false);
     setSelectedChain(chainValue);
+    selectedChainRef.current = chainValue; // Update ref immediately
+
+    // Bitcoin doesn't require wallet connection
+    if (chainValue === 'bitcoin') {
+      resetState(); // Reset timestamping state when switching to Bitcoin
+      return;
+    }
 
     if (!wallet) {
-      return; // Can't switch if not connected
+      return; // Can't switch if not connected (for EVM chains)
     }
 
     // Map chain identifier to chain ID
@@ -285,6 +294,11 @@ export default function OnChainTimestamping() {
 
       window.ethereum.on('chainChanged', async (chainIdHex) => {
         try {
+          // Don't process chain changes if Bitcoin is selected (use ref to avoid stale closure)
+          if (selectedChainRef.current === 'bitcoin') {
+            return;
+          }
+
           const newChainId = parseInt(chainIdHex, 16);
           setChainId(newChainId);
 
@@ -330,6 +344,11 @@ export default function OnChainTimestamping() {
       // Check if already connected
       const checkConnection = async () => {
         try {
+          // Don't check connection if Bitcoin is selected (use ref to avoid stale closure)
+          if (selectedChainRef.current === 'bitcoin') {
+            return;
+          }
+
           const provider = new ethers.BrowserProvider(window.ethereum);
           const accounts = await provider.listAccounts();
           if (accounts.length > 0) {
@@ -447,12 +466,13 @@ export default function OnChainTimestamping() {
     if (id === NETWORK_IDS.BASE) return 'base';
     if (id === NETWORK_IDS.ARBITRUM_ONE || id === NETWORK_IDS.ARBITRUM_SEPOLIA) return 'arbitrum';
     if (id === NETWORK_IDS.LOCAL_ANVIL) return 'arbitrum'; // Local anvil treated as arbitrum
+    if (id === NETWORK_IDS.BITCOIN) return 'bitcoin';
     return null;
   };
 
   /**
    * Get icon path for chain identifier
-   * @param {string} chainIdentifier - Chain identifier ('ethereum', 'optimism', 'arbitrum', 'base')
+   * @param {string} chainIdentifier - Chain identifier ('ethereum', 'optimism', 'arbitrum', 'base', 'bitcoin')
    * @returns {string} Icon file path
    */
   const getChainIcon = (chainIdentifier) => {
@@ -461,22 +481,37 @@ export default function OnChainTimestamping() {
       'optimism': '/icons/optimism.svg',
       'arbitrum': '/icons/arbitrum.svg',
       'base': '/icons/base.svg',
+      'bitcoin': '/icons/bitcoin.svg',
     };
     return iconMap[chainIdentifier] || '/icons/ethereum.svg';
   };
 
-  // Update selectedChain when chainId changes
+  // Update selectedChainRef when selectedChain changes
   useEffect(() => {
+    selectedChainRef.current = selectedChain;
+  }, [selectedChain]);
+
+  // Update selectedChain when chainId changes
+  // Don't override Bitcoin selection since it doesn't use chainId
+  useEffect(() => {
+    // Don't override Bitcoin selection - Bitcoin doesn't use chainId
+    if (selectedChainRef.current === 'bitcoin') {
+      return;
+    }
+    
     if (chainId) {
       const chainIdentifier = getChainIdentifier(chainId);
-      if (chainIdentifier) {
+      if (chainIdentifier && chainIdentifier !== selectedChainRef.current) {
         setSelectedChain(chainIdentifier);
       }
       // If on unsupported network, don't change selection
-    } else {
-      setSelectedChain('arbitrum'); // Default when disconnected
+    } else if (!wallet) {
+      // Only set default if wallet is disconnected and not Bitcoin
+      if (selectedChainRef.current !== 'bitcoin') {
+        setSelectedChain('ethereum'); // Default when disconnected
+      }
     }
-  }, [chainId]);
+  }, [chainId, wallet]); // Removed selectedChain from dependencies to avoid loops
 
   // Display value without 0x prefix for UX
   const displayRoot = merkleRoot.startsWith("0x") ? merkleRoot.slice(2) : merkleRoot;
@@ -485,30 +520,44 @@ export default function OnChainTimestamping() {
     <div style={container}>
       {/* Wallet Status Button & Network Dropdown */}
       <div style={walletStatusRow}>
-        <button
-          style={{
+        {selectedChain !== 'bitcoin' && (
+          <button
+            style={{
+              ...walletStatusBtn,
+              ...(wallet ? walletStatusConnected : walletStatusDisconnected)
+            }}
+            onClick={wallet ? disconnectWallet : connectWallet}
+            disabled={connecting}
+            aria-label={wallet ? "Disconnect wallet" : "Connect wallet"}
+            aria-busy={connecting}
+          >
+            {connecting ? (
+              'Connecting...'
+            ) : wallet ? (
+              <>
+                <span style={statusDot}></span>
+                Connected {account || ''}
+              </>
+            ) : (
+              <>
+                <span style={{...statusDot, background: '#666'}}></span>
+                Disconnected
+              </>
+            )}
+          </button>
+        )}
+        {selectedChain === 'bitcoin' && (
+          <div style={{
             ...walletStatusBtn,
-            ...(wallet ? walletStatusConnected : walletStatusDisconnected)
-          }}
-          onClick={wallet ? disconnectWallet : connectWallet}
-          disabled={connecting}
-          aria-label={wallet ? "Disconnect wallet" : "Connect wallet"}
-          aria-busy={connecting}
-        >
-          {connecting ? (
-            'Connecting...'
-          ) : wallet ? (
-            <>
-              <span style={statusDot}></span>
-              Connected {account || ''}
-            </>
-          ) : (
-            <>
-              <span style={{...statusDot, background: '#666'}}></span>
-              Disconnected
-            </>
-          )}
-        </button>
+            background: "rgba(247, 147, 26, 0.1)",
+            border: "1px solid rgba(247, 147, 26, 0.3)",
+            color: "#f7931a",
+            cursor: "default"
+          }}>
+            <span style={{...statusDot, background: '#f7931a'}}></span>
+            Bitcoin (No wallet required)
+          </div>
+        )}
         <div style={dropdownContainer} ref={dropdownRef}>
           <button
             type="button"
@@ -518,32 +567,34 @@ export default function OnChainTimestamping() {
               ...(dropdownOpen ? networkSelectButtonOpen : {}),
               ...((!wallet || switchingNetwork) ? networkSelectButtonDisabled : {})
             }}
-            onClick={() => !switchingNetwork && wallet && setDropdownOpen(!dropdownOpen)}
-            disabled={!wallet || switchingNetwork}
+            onClick={() => !switchingNetwork && (wallet || selectedChain === 'bitcoin') && setDropdownOpen(!dropdownOpen)}
+            disabled={(!wallet && selectedChain !== 'bitcoin') || switchingNetwork}
             aria-label="Select blockchain network"
             aria-expanded={dropdownOpen}
             aria-haspopup="listbox"
           >
             <img 
-              src={getChainIcon(wallet && chainId ? getChainIdentifier(chainId) || selectedChain : selectedChain)} 
+              src={getChainIcon(selectedChain === 'bitcoin' ? 'bitcoin' : (wallet && chainId ? getChainIdentifier(chainId) || selectedChain : selectedChain))} 
               alt="" 
               style={networkIcon}
             />
             <span style={networkSelectText}>
-              {wallet && chainId 
-                ? (getChainIdentifier(chainId) === 'ethereum' ? 'Ethereum Mainnet' :
-                   getChainIdentifier(chainId) === 'optimism' ? (getNetworkName(chainId) || 'Optimism') :
-                   getChainIdentifier(chainId) === 'base' ? (getNetworkName(chainId) || 'Base') :
-                   getChainIdentifier(chainId) === 'arbitrum' ? (getNetworkName(chainId) || 'Arbitrum One') :
-                   'Select Network')
-                : (selectedChain === 'ethereum' ? 'Ethereum Mainnet' :
-                   selectedChain === 'optimism' ? 'Optimism' :
-                   selectedChain === 'base' ? 'Base' :
-                   'Arbitrum One')}
+              {selectedChain === 'bitcoin' 
+                ? 'Bitcoin'
+                : (wallet && chainId 
+                  ? (getChainIdentifier(chainId) === 'ethereum' ? 'Ethereum Mainnet' :
+                     getChainIdentifier(chainId) === 'optimism' ? (getNetworkName(chainId) || 'Optimism') :
+                     getChainIdentifier(chainId) === 'base' ? (getNetworkName(chainId) || 'Base') :
+                     getChainIdentifier(chainId) === 'arbitrum' ? (getNetworkName(chainId) || 'Arbitrum One') :
+                     'Select Network')
+                  : (selectedChain === 'ethereum' ? 'Ethereum Mainnet' :
+                     selectedChain === 'optimism' ? 'Optimism' :
+                     selectedChain === 'base' ? 'Base' :
+                     'Arbitrum One'))}
             </span>
             <span style={dropdownArrow}>{dropdownOpen ? '▲' : '▼'}</span>
           </button>
-          {dropdownOpen && wallet && !switchingNetwork && (
+          {dropdownOpen && (wallet || selectedChain === 'bitcoin') && !switchingNetwork && (
             <div style={dropdownMenu} role="listbox">
               <NetworkOption
                 chainId="ethereum"
@@ -579,6 +630,13 @@ export default function OnChainTimestamping() {
                 isSelected={selectedChain === 'base'}
                 onClick={() => handleNetworkSelect('base')}
               />
+              <NetworkOption
+                chainId="bitcoin"
+                label="Bitcoin"
+                icon={getChainIcon('bitcoin')}
+                isSelected={selectedChain === 'bitcoin'}
+                onClick={() => handleNetworkSelect('bitcoin')}
+              />
             </div>
           )}
         </div>
@@ -595,56 +653,66 @@ export default function OnChainTimestamping() {
         </div>
       )}
 
-      <div style={section}>
-        <label style={label}>
-          <span style={labelText}>Merkle Root</span>
-          <input
-            type="text"
-            value={displayRoot}
-            onChange={(e) => handleRootChange(e.target.value)}
-            placeholder="Enter 64 hex characters..."
-            aria-label="Merkle root input"
-            aria-invalid={merkleRoot && !isValidMerkleRootFormat(merkleRoot)}
-            style={{
-              ...input,
-              borderColor: merkleRoot && !isValidMerkleRootFormat(merkleRoot) ? "#ff6b6b" : "#2a2a2a",
-            }}
-          />
-          <div style={hint}>
-            Paste a 32-byte hex root or load <code>merkle-tree.json</code>.
-            {merkleRoot && !isValidMerkleRootFormat(merkleRoot) && (
-              <span style={{ color: "#ff6b6b", marginLeft: 6 }} aria-live="polite">Invalid root format</span>
+      {selectedChain !== 'bitcoin' && (
+        <div style={section}>
+          <label style={label}>
+            <span style={labelText}>Merkle Root</span>
+            <input
+              type="text"
+              value={displayRoot}
+              onChange={(e) => handleRootChange(e.target.value)}
+              placeholder="Enter 64 hex characters..."
+              aria-label="Merkle root input"
+              aria-invalid={merkleRoot && !isValidMerkleRootFormat(merkleRoot)}
+              style={{
+                ...input,
+                border: merkleRoot && !isValidMerkleRootFormat(merkleRoot) ? "1px solid #ff6b6b" : "1px solid #2a2a2a",
+              }}
+            />
+            <div style={hint}>
+              Paste a 32-byte hex root or load <code>merkle-tree.json</code>.
+              {merkleRoot && !isValidMerkleRootFormat(merkleRoot) && (
+                <span style={{ color: "#ff6b6b", marginLeft: 6 }} aria-live="polite">Invalid root format</span>
+              )}
+            </div>
+          </label>
+
+          <div style={{ marginTop: 10 }}>
+            <label style={uploadBtn}>
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleFileChange}
+                style={{ display: "none" }}
+              />
+              Load merkle-tree.json
+            </label>
+            {fileName && (
+              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+                Loaded: <span style={{ fontFamily: "monospace" }}>{fileName}</span>
+              </div>
             )}
           </div>
-        </label>
-
-        <div style={{ marginTop: 10 }}>
-          <label style={uploadBtn}>
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={handleFileChange}
-              style={{ display: "none" }}
-            />
-            Load merkle-tree.json
-          </label>
-          {fileName && (
-            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-              Loaded: <span style={{ fontFamily: "monospace" }}>{fileName}</span>
-            </div>
-          )}
         </div>
-      </div>
+      )}
 
-      <div style={section}>
-        <BlockchainCommit
-          key={chainId || 'no-chain'}
+      {selectedChain === 'bitcoin' ? (
+        <BitcoinTimestamping
+          key="bitcoin"
           merkleRoot={isValidMerkleRootFormat(merkleRoot) ? merkleRoot : ""}
           jsonData={jsonData}
-          wallet={wallet}
-          onCommitted={() => {}}
         />
-      </div>
+      ) : (
+        <div style={section}>
+          <BlockchainCommit
+            key={chainId || 'no-chain'}
+            merkleRoot={isValidMerkleRootFormat(merkleRoot) ? merkleRoot : ""}
+            jsonData={jsonData}
+            wallet={wallet}
+            onCommitted={() => {}}
+          />
+        </div>
+      )}
 
       {error && (
         <div style={errorBox}>
@@ -839,13 +907,13 @@ const walletStatusBtn = {
 
 const walletStatusConnected = {
   background: "rgba(46, 204, 113, 0.1)",
-  borderColor: "rgba(46, 204, 113, 0.3)",
+  border: "1px solid rgba(46, 204, 113, 0.3)",
   color: "#2ecc71",
 };
 
 const walletStatusDisconnected = {
   background: "rgba(255,255,255,0.02)",
-  borderColor: "rgba(255,255,255,0.08)",
+  border: "1px solid rgba(255,255,255,0.08)",
 };
 
 const statusDot = {
@@ -924,7 +992,7 @@ const networkSelectButton = {
 };
 
 const networkSelectButtonOpen = {
-  borderColor: "rgba(102, 126, 234, 0.4)",
+  border: "1px solid rgba(102, 126, 234, 0.4)",
   background: "rgba(255,255,255,0.06)",
 };
 

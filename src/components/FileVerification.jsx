@@ -160,10 +160,10 @@ export default function FileVerification() {
       // Store file data with hashes for both exact and subset verification
       const fileData = [];
       const enc = new TextEncoder();
-      
+
       for (let i = 0; i < filtered.length; i++) {
         const { file, relPath } = filtered[i];
-        
+
         // For very large files, use streaming hash directly instead of reading entire file
         const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100 MB
         let contentHashBytes;
@@ -174,12 +174,12 @@ export default function FileVerification() {
           contentHashBytes = await sha256Stream(file);
         } else {
           // Use regular approach for smaller files
-          const bytes = await readFileWithErrorHandling(file);
+        const bytes = await readFileWithErrorHandling(file);
           contentHashBytes = await sha256Bytes(bytes);
         }
         const contentHashHex = toHex(contentHashBytes).toLowerCase();
         const leafHashBytes = await computeLeafHashBytes(contentHashBytes);
-        
+
         fileData.push({
           relPath,
           contentHashHex,
@@ -332,7 +332,7 @@ export default function FileVerification() {
         contentHashBytes = await sha256Stream(file);
       } else {
         // Use regular approach for smaller files
-        const bytes = await readFileWithErrorHandling(file);
+      const bytes = await readFileWithErrorHandling(file);
         contentHashBytes = await sha256Bytes(bytes);
       }
 
