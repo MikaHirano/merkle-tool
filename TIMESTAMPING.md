@@ -2,14 +2,14 @@
 
 ## Overview
 
-This application provides **blockchain timestamping** capabilities, allowing you to create cryptographic proofs that your files existed at a specific point in time. The application supports both Ethereum-based blockchains (Ethereum, Optimism, Arbitrum, Base) via smart contracts and Bitcoin via the [OpenTimestamps](https://opentimestamps.org/) protocol.
+This application provides **blockchain timestamping** capabilities, allowing you to create cryptographic proofs that your files existed at a specific point in time. The application supports both Ethereum-based blockchains (Ethereum, Optimism, Arbitrum, Base, ZkSync Era) via smart contracts and Bitcoin via the [OpenTimestamps](https://opentimestamps.org/) protocol.
 
 ## What is Timestamping?
 
 Timestamping is the process of proving that certain data existed at a specific point in time. In the context of this application:
 
 1. **You generate a Merkle root** from your files/folders
-2. **You commit this root to the blockchain** (Ethereum Mainnet, Optimism, Arbitrum One, Base, or Bitcoin)
+2. **You commit this root to the blockchain** (Ethereum Mainnet, Optimism, Arbitrum One, Base, ZkSync Era, or Bitcoin)
 3. **The blockchain provides immutable proof** that your data existed when the transaction was included in a block
 
 This creates a **cryptographic proof** that cannot be forged or backdated, as it relies on the blockchain's consensus mechanism.
@@ -19,7 +19,7 @@ This creates a **cryptographic proof** that cannot be forged or backdated, as it
 This application supports two different timestamping approaches:
 
 ### Ethereum-Based Chains (Smart Contracts)
-- **Networks**: Ethereum Mainnet, Optimism, Arbitrum One, Base
+- **Networks**: Ethereum Mainnet, Optimism, Arbitrum One, Base, ZkSync Era
 - **Method**: Smart contract transactions
 - **Requires**: Web3 wallet (MetaMask, etc.)
 - **Confirmation**: Fast (~1-2 seconds for L2, ~12 seconds for Ethereum)
@@ -48,11 +48,11 @@ The Merkle root is deterministic - the same files will always produce the same r
 
 ### Step 2: Commit to Blockchain
 
-#### For Ethereum-Based Chains (Ethereum, Optimism, Arbitrum, Base)
+#### For Ethereum-Based Chains (Ethereum, Optimism, Arbitrum, Base, ZkSync Era)
 
 When you click "Create Timestamp on [Blockchain Name]":
 
-1. **Your wallet connects** to the selected blockchain (Ethereum Mainnet, Optimism, Arbitrum One, or Base)
+1. **Your wallet connects** to the selected blockchain (Ethereum Mainnet, Optimism, Arbitrum One, Base, or ZkSync Era)
 2. **A transaction is sent** containing your Merkle root
 3. **Transaction status is tracked** - you'll see "Transaction pending confirmation" with an animated loading indicator while waiting
 4. **The transaction is included in a block** with a specific block number and timestamp
@@ -124,7 +124,7 @@ This application shares core concepts with [OpenTimestamps](https://opentimestam
 
 | Feature | OpenTimestamps (Bitcoin) | Ethereum-Based Chains | This Application (Both) |
 |---------|-------------------------|----------------------|------------------------|
-| **Blockchain** | Bitcoin | Ethereum Mainnet, Optimism, Arbitrum One, Base | Both supported |
+| **Blockchain** | Bitcoin | Ethereum Mainnet, Optimism, Arbitrum One, Base, ZkSync Era | Both supported |
 | **Cost** | Very low (aggregated) | Low (L2) or moderate (Ethereum) | Varies by chain |
 | **Confirmation** | ~10 minutes | ~1-2 seconds (L2) or ~12 seconds (Ethereum) | Depends on chain |
 | **Wallet Required** | No | Yes | Bitcoin: No, EVM: Yes |
@@ -162,6 +162,13 @@ This application supports multiple networks:
 - **Low cost**: L2 fees are significantly lower than Ethereum mainnet
 - **Ethereum compatibility**: Uses the same security model as Ethereum
 - **Coinbase integration**: Built by Coinbase on the OP Stack
+
+**ZkSync Era (L2):**
+- **Fast confirmations**: Transactions are confirmed in seconds
+- **Low cost**: L2 fees are significantly lower than Ethereum mainnet
+- **Ethereum compatibility**: Uses the same security model as Ethereum
+- **ZK-rollup technology**: Uses zero-knowledge proofs for scalability and security
+- **EVM compatibility**: Full compatibility with Ethereum tooling
 
 **Bitcoin (OpenTimestamps):**
 - **No wallet required**: Uses public OpenTimestamps calendar servers
@@ -448,6 +455,7 @@ The `MerkleRootRegistry` contract is deployed on multiple networks:
 - **Optimism**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://optimistic.etherscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
 - **Arbitrum One**: [`0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E`](https://arbiscan.io/address/0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E)
 - **Base**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://basescan.org/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+- **ZkSync Era**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://explorer.zksync.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
 
 ## Frequently Asked Questions
 
@@ -485,7 +493,7 @@ A: Your actual files are never uploaded. Only the Merkle root (a 32-byte hash) i
 ### Q: Can I verify timestamps without the app?
 
 A: Yes! You can verify timestamps by:
-- **Ethereum-based chains**: Checking the contract on Etherscan (Ethereum), Optimistic Etherscan (Optimism), Arbiscan (Arbitrum), or Basescan (Base)
+- **Ethereum-based chains**: Checking the contract on Etherscan (Ethereum), Optimistic Etherscan (Optimism), Arbiscan (Arbitrum), Basescan (Base), or ZkSync Era Explorer (ZkSync Era)
 - **Bitcoin**: Using OpenTimestamps command-line tools: `ots verify timestamp.ots`
 - **All chains**: Regenerating the Merkle root using any compatible tool and comparing the roots
 

@@ -15,6 +15,7 @@ import {
 } from "../lib/utils.jsx";
 import { PROGRESS_UPDATE_THROTTLE_MS, DEFAULT_FOLDER_POLICY } from "../lib/constants.js";
 import { getErrorMessage, logError } from "../lib/errorHandler.js";
+import FolderPolicy from "./FolderPolicy.jsx";
 
 /**
  * Bytes-only Merkle commitment:
@@ -459,33 +460,13 @@ export default function MerkleRootGenerator() {
         )}
       </div>
 
-      <div style={card}>
-        <h2 style={{ marginTop: 0 }}>Folder Policy</h2>
-
-        <label style={row}>
-          <input
-            type="checkbox"
-            checked={policy.includeHidden}
-            onChange={(e) => setPolicy((p) => ({ ...p, includeHidden: e.target.checked }))}
-          />
-          Include hidden files/folders (names starting with ".")
-        </label>
-
-        <label style={row}>
-          <input
-            type="checkbox"
-            checked={policy.ignoreJunk}
-            onChange={(e) => setPolicy((p) => ({ ...p, ignoreJunk: e.target.checked }))}
-          />
-          Ignore junk/system files (recommended)
-        </label>
-
-        <div style={hint}>
-          Ignored by default: <span style={monoInline}>.DS_Store</span>, <span style={monoInline}>._*</span>,{" "}
-          <span style={monoInline}>.Spotlight-V100/</span>, <span style={monoInline}>.Trashes/</span>,{" "}
-          <span style={monoInline}>.git/</span>, <span style={monoInline}>node_modules/</span>
-        </div>
-      </div>
+      <FolderPolicy
+        policy={policy}
+        onChange={setPolicy}
+        source="manual"
+        editable={true}
+        showSource={true}
+      />
 
       {progress.total > 0 && (
         <div>

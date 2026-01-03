@@ -11,6 +11,7 @@ export const NETWORK_IDS = {
   ETHEREUM_MAINNET: 1,
   OPTIMISM: 10,
   BASE: 8453,
+  ZKSYNC_ERA: 324,
   BITCOIN: -1, // Special ID for Bitcoin (not EVM chain)
 };
 
@@ -22,6 +23,7 @@ export const NETWORK_NAMES = {
   [NETWORK_IDS.ETHEREUM_MAINNET]: "Ethereum Mainnet",
   [NETWORK_IDS.OPTIMISM]: "Optimism",
   [NETWORK_IDS.BASE]: "Base",
+  [NETWORK_IDS.ZKSYNC_ERA]: "ZkSync Era",
   [NETWORK_IDS.BITCOIN]: "Bitcoin",
 };
 
@@ -46,6 +48,10 @@ export const EXPLORER_URLS = {
   [NETWORK_IDS.BASE]: {
     base: "https://basescan.org",
     name: "Basescan",
+  },
+  [NETWORK_IDS.ZKSYNC_ERA]: {
+    base: "https://explorer.zksync.io",
+    name: "ZkSync Era Explorer",
   },
   [NETWORK_IDS.LOCAL_ANVIL]: {
     base: "http://localhost:8545",
@@ -113,6 +119,7 @@ export function getBlockchainShortName(chainId) {
     [NETWORK_IDS.LOCAL_ANVIL]: "local",
     [NETWORK_IDS.OPTIMISM]: "optimism",
     [NETWORK_IDS.BASE]: "base",
+    [NETWORK_IDS.ZKSYNC_ERA]: "zksync-era",
     [NETWORK_IDS.BITCOIN]: "bitcoin",
   };
   return mapping[chainId] || `chain-${chainId}`;

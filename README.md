@@ -1,10 +1,10 @@
 # Merkle Tool
 
-A web-based tool for generating and verifying Merkle trees from files and folders using SHA-256 cryptographic hashing. Built with React and Vite, this tool provides local-only, client-side processing for secure file integrity verification and **blockchain timestamping** on Ethereum, Optimism, Arbitrum, Base, and Bitcoin.
+A web-based tool for generating and verifying Merkle trees from files and folders using SHA-256 cryptographic hashing. Built with React and Vite, this tool provides local-only, client-side processing for secure file integrity verification and **blockchain timestamping** on Ethereum, Optimism, Arbitrum, Base, ZkSync Era, and Bitcoin.
 
 ## Blockchain Timestamping
 
-Create immutable timestamps of your files on Ethereum, Optimism, Arbitrum, Base, and Bitcoin blockchains! This feature supports both Ethereum-based smart contracts and Bitcoin via the [OpenTimestamps](https://opentimestamps.org/) protocol, allowing you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
+Create immutable timestamps of your files on Ethereum, Optimism, Arbitrum, Base, ZkSync Era, and Bitcoin blockchains! This feature supports both Ethereum-based smart contracts and Bitcoin via the [OpenTimestamps](https://opentimestamps.org/) protocol, allowing you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
 
 ## Features
 
@@ -14,25 +14,28 @@ Create immutable timestamps of your files on Ethereum, Optimism, Arbitrum, Base,
 - **Configurable Policies**: Control which files to include/exclude (hidden files, system files, etc.)
 - **JSON Output**: Export complete Merkle tree data for verification
 - **Large File Support**: Stream-based hashing for files of any size without memory limitations
-- **Progress Tracking**: Real-time progress indicators with time estimation for long-running operations
+- **Progress Tracking**: Real-time progress bars with time estimation and per-file progress for long-running operations
 - **Cancellation**: Stop processing at any time with graceful cancellation handling
 
 ### File Verification
 - **Folder Verification**: Recompute and compare Merkle roots against stored commitments
+- **Manual Root Input**: Direct Merkle root input option for quick verification without JSON files
 - **Single File Proofs**: Verify individual files using Merkle proofs
-- **Policy Consistency**: Ensure verification uses the same filtering rules as generation
+- **Policy Consistency**: Unified FolderPolicy component ensures verification uses the same filtering rules as generation
 - **Subfolder Verification**: Verify that subfolders are contained within a larger Merkle tree
 - **Large File Support**: Stream-based hashing for verification of files of any size
+- **Progress Tracking**: Real-time progress bars with time estimation for verification operations
+- **Computed Root Display**: Always shows computed root in verification results for easy comparison
 
 ### Blockchain Timestamping
-- **On-Chain Commitments**: Commit Merkle roots to Ethereum, Optimism, Arbitrum, Base, and Bitcoin blockchains for immutable timestamping
-- **Ethereum-Based Chains**: Smart contract-based timestamping on Ethereum Mainnet, Optimism, Arbitrum One, and Base (requires wallet connection)
+- **On-Chain Commitments**: Commit Merkle roots to Ethereum, Optimism, Arbitrum, Base, ZkSync Era, and Bitcoin blockchains for immutable timestamping
+- **Ethereum-Based Chains**: Smart contract-based timestamping on Ethereum Mainnet, Optimism, Arbitrum One, Base, and ZkSync Era (requires wallet connection)
 - **Bitcoin Timestamping**: OpenTimestamps protocol for Bitcoin timestamping (no wallet required, uses calendar servers)
 - **Proof Generation**: Download proof files containing transaction details, blockchain metadata, and verification URLs
-- **Network Support**: Works with Ethereum Mainnet, Optimism, Arbitrum One, Base, Bitcoin, and local chains
+- **Network Support**: Works with Ethereum Mainnet, Optimism, Arbitrum One, Base, ZkSync Era, Bitcoin, and local chains
 - **Bidirectional Network Switching**: Automatically syncs network selection between the app and MetaMask (EVM chains)
 - **Transaction Status**: Real-time transaction status with pending confirmation and confirmed states
-- **Animated Loading Indicators**: Visual feedback during transaction processing
+- **Animated Loading Indicators**: Consistent animated spinners throughout the app for all in-progress operations
 - **State Management**: Automatic state reset when switching networks
 - **Automatic Verification**: Verify timestamps directly from the proof files
 
@@ -75,16 +78,27 @@ Requires browsers with File System Access API support:
 4. Download the generated `merkle-tree.json`
 
 ### Verifying Files/Folders
-1. Click "Open merkle-tree.json" to load a commitment
-2. Use "Verify Folder" to check entire directory integrity
-3. Use "Verify Single File" to check individual files
+
+**Option 1: Using JSON File**
+1. Click "Load JSON file" radio button
+2. Click "Open merkle-tree.json" to load a commitment
+3. Configure folder policy (auto-populated from JSON, can be overridden)
+4. Use "Verify Folder" to check entire directory integrity
+5. Use "Verify Single File" to check individual files
+
+**Option 2: Manual Root Input**
+1. Click "Enter root manually" radio button
+2. Paste a 32-byte hex Merkle root (64 hex characters)
+3. Configure folder policy manually
+4. Use "Verify Folder" to check entire directory integrity (exact match only)
+5. Note: Single file and subfolder verification requires a JSON file
 
 ### Creating Blockchain Timestamps
 
-**For Ethereum-Based Chains (Ethereum, Optimism, Arbitrum, Base):**
+**For Ethereum-Based Chains (Ethereum, Optimism, Arbitrum, Base, ZkSync Era):**
 1. Go to the "On-Chain Timestamping" tab
 2. Connect your Web3 wallet (MetaMask recommended)
-3. Select your preferred network (Ethereum Mainnet, Optimism, Arbitrum One, or Base)
+3. Select your preferred network (Ethereum Mainnet, Optimism, Arbitrum One, Base, or ZkSync Era)
 4. Load a `merkle-tree.json` file or paste a Merkle root
 5. Click "Create Timestamp on [Blockchain Name]"
 6. Confirm the transaction in your wallet
@@ -113,10 +127,21 @@ Requires browsers with File System Access API support:
 - **Optimism**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://optimistic.etherscan.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
 - **Arbitrum One**: [`0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E`](https://arbiscan.io/address/0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E)
 - **Base**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://basescan.org/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
+- **ZkSync Era**: [`0xA095c28448186ACC0e950A17b96879394f89C5B4`](https://explorer.zksync.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4)
 
 ### Folder Policies
+
+The application uses a unified **FolderPolicy** component that ensures consistent policy application across generation and verification:
+
 - **Include Hidden Files**: Files/folders starting with "." (default: excluded)
 - **Ignore Junk Files**: System files like `.DS_Store`, `Thumbs.db`, etc. (default: ignored)
+
+**Policy Sources:**
+- **From JSON**: When loading a `merkle-tree.json`, the policy is automatically populated from the file
+- **Manual Configuration**: When entering a root manually or generating a new tree, you configure the policy yourself
+- **Override Option**: When using a JSON file, you can override the policy if needed
+
+**Policy Consistency**: The same policy used during generation must be used during verification to ensure accurate results. The FolderPolicy component helps maintain this consistency by clearly indicating the policy source and allowing overrides when necessary.
 
 ## Development
 
@@ -200,6 +225,7 @@ src/
 ├── components/
 │   ├── MerkleRootGenerator.jsx    # Tree generation UI
 │   ├── FileVerification.jsx       # Verification UI
+│   ├── FolderPolicy.jsx            # Unified folder policy component
 │   ├── OnChainTimestamping.jsx   # Blockchain timestamping UI
 │   ├── BitcoinTimestamping.jsx   # Bitcoin OpenTimestamps UI
 │   ├── BlockchainCommit.jsx      # Commit to blockchain component
@@ -234,7 +260,7 @@ This application implements blockchain timestamping, inspired by [OpenTimestamps
 - **Immutable Proofs**: Once committed to the blockchain, timestamps cannot be altered
 - **Public Verification**: Anyone can verify timestamps using the proof files
 - **Privacy-Preserving**: Only Merkle roots are stored on-chain, not your actual files
-- **Multi-Chain Support**: Deployments on Ethereum Mainnet, Optimism, Arbitrum One, Base, and Bitcoin (via OpenTimestamps)
+- **Multi-Chain Support**: Deployments on Ethereum Mainnet, Optimism, Arbitrum One, Base, ZkSync Era, and Bitcoin (via OpenTimestamps)
 - **Cost-Effective**: Low-cost timestamping on L2 networks
 - **Real-Time Status**: Transaction status tracking with pending and confirmed states
 

@@ -15,8 +15,10 @@ import {
   readFileWithErrorHandling,
   shouldIgnoreRelPath,
 } from "../lib/utils.jsx";
-import { PROGRESS_UPDATE_THROTTLE_MS } from "../lib/constants.js";
+import { PROGRESS_UPDATE_THROTTLE_MS, DEFAULT_FOLDER_POLICY } from "../lib/constants.js";
 import { getErrorMessage, logError } from "../lib/errorHandler.js";
+import { isValidMerkleRootFormat, normalizeMerkleRoot } from "../lib/validation.js";
+import FolderPolicy from "./FolderPolicy.jsx";
 
 /**
  * Verification supports:
@@ -49,6 +51,13 @@ export default function FileVerification() {
 
   const [json, setJson] = useState(null);
   const [jsonName, setJsonName] = useState("merkle-tree.json");
+  const [inputMode, setInputMode] = useState("json"); // 'json' | 'manual'
+  const [merkleRoot, setMerkleRoot] = useState("");
+  
+  // Policy state management
+  const [policy, setPolicy] = useState(DEFAULT_FOLDER_POLICY);
+  const [policySource, setPolicySource] = useState("default"); // 'json' | 'manual' | 'default'
+  const [policyOverride, setPolicyOverride] = useState(false);
 
   const [status, setStatus] = useState("Idle.");
   const [error, setError] = useState("");
@@ -68,10 +77,6 @@ export default function FileVerification() {
   const [folderResult, setFolderResult] = useState(null);
   const [fileResult, setFileResult] = useState(null);
 
-  // Should verification apply the JSON's folder policy?
-  // (recommended: ON)
-  const [useJsonPolicy, setUseJsonPolicy] = useState(true);
-
   const pct = useMemo(
     () => (progress.total ? Math.round((progress.done / progress.total) * 100) : 0),
     [progress]
@@ -82,6 +87,44 @@ export default function FileVerification() {
     setFolderResult(null);
     setFileResult(null);
     setProgress({ done: 0, total: 0 });
+  }
+
+  function handleRootInput(value) {
+    const normalized = normalizeMerkleRoot(value);
+    setMerkleRoot(normalized);
+    setError("");
+  }
+
+  function handleModeChange(mode) {
+    resetResults();
+    setInputMode(mode);
+    if (mode === "json") {
+      setMerkleRoot(""); // Clear manual root when switching to JSON mode
+      // If JSON is loaded, restore its policy
+      if (json?.folderPolicy) {
+        setPolicy(json.folderPolicy);
+        setPolicySource("json");
+        setPolicyOverride(false);
+      } else {
+        setPolicy(DEFAULT_FOLDER_POLICY);
+        setPolicySource("default");
+        setPolicyOverride(false);
+      }
+    } else {
+      // Switching to manual mode
+      setJson(null); // Clear JSON when switching to manual mode
+      setJsonName("merkle-tree.json");
+      // If override was enabled, preserve current policy, otherwise reset to default
+      if (policyOverride && policySource === "json") {
+        // Keep current policy but mark as manual
+        setPolicySource("manual");
+        setPolicyOverride(false);
+      } else {
+        setPolicy(DEFAULT_FOLDER_POLICY);
+        setPolicySource("manual");
+        setPolicyOverride(false);
+      }
+    }
   }
 
   async function openJson() {
@@ -113,12 +156,23 @@ export default function FileVerification() {
         throw new Error("Invalid tree.levels in JSON.");
       }
 
-      // require policy for folder verification consistency
+      // Handle policy - warn if missing but don't fail
       if (!parsed.folderPolicy) {
-        throw new Error('This JSON is missing "folderPolicy". Please regenerate using the current Generator.');
+        // Use default policy but warn user
+        setPolicy(DEFAULT_FOLDER_POLICY);
+        setPolicySource("default");
+        setPolicyOverride(false);
+        setError('Warning: This JSON is missing "folderPolicy". Using default policy. Please regenerate using the current Generator for consistent verification.');
+      } else {
+        // Auto-populate policy from JSON
+        setPolicy(parsed.folderPolicy);
+        setPolicySource("json");
+        setPolicyOverride(false);
+        setError(""); // Clear any previous errors
       }
 
       setJson(parsed);
+      setMerkleRoot(""); // Clear manual root when loading JSON
       setStatus("JSON loaded.");
     } catch (e) {
       if (e?.name === "AbortError") return;
@@ -129,7 +183,9 @@ export default function FileVerification() {
   }
 
   async function verifyFolder() {
-    if (!json) return;
+    // Require either JSON or manual root input
+    if (inputMode === "json" && !json) return;
+    if (inputMode === "manual" && (!merkleRoot || !isValidMerkleRootFormat(merkleRoot))) return;
     if (!hasDir) return;
 
     resetResults();
@@ -142,12 +198,11 @@ export default function FileVerification() {
       setStatus("Scanning folder…");
       const pairs = await listFilesFromDirectoryHandle(dir);
 
-      // apply policy
-      const policy = useJsonPolicy ? json.folderPolicy : { includeHidden: true, ignoreJunk: false, ignoreNames: [], ignorePrefixes: [], ignorePathPrefixes: [] };
+      // Use current policy state (already set from JSON or manual configuration)
 
       // Always ignore the proof file if it exists inside the folder
       const filtered = pairs
-        .filter((p) => p.relPath !== "merkle-tree.json" && p.relPath !== jsonName)
+        .filter((p) => p.relPath !== "merkle-tree.json" && (inputMode === "manual" || p.relPath !== jsonName))
         .filter((p) => !shouldIgnoreRelPath(p.relPath, policy));
 
       if (filtered.length === 0) throw new Error("No files left after applying folderPolicy.");
@@ -199,10 +254,24 @@ export default function FileVerification() {
 
       setStatus("Building Merkle tree…");
       const { root } = await buildMerkleTreeFromLeafHashes(leafHashes);
-      const computed = toHex(root);
-      const expected = String(json.root || "");
+      const computed = toHex(root).toLowerCase();
+      
+      // Use root from JSON if in JSON mode, otherwise use manual root input
+      let expected;
+      if (inputMode === "json") {
+        expected = String(json.root || "");
+        // Remove 0x prefix if present
+        if (expected.startsWith("0x")) {
+          expected = expected.slice(2);
+        }
+        expected = expected.toLowerCase();
+      } else {
+        const normalized = normalizeMerkleRoot(merkleRoot);
+        // Remove 0x prefix for comparison (toHex doesn't include it)
+        expected = normalized.startsWith("0x") ? normalized.slice(2).toLowerCase() : normalized.toLowerCase();
+      }
 
-      const exactMatch = computed.toLowerCase() === expected.toLowerCase();
+      const exactMatch = computed === expected;
 
       let verificationMode = "exact";
       let filesVerified = [];
@@ -213,8 +282,8 @@ export default function FileVerification() {
         // Exact match - all files verified
         filesVerified = fileData.map(f => f.relPath);
         verificationRate = 100;
-      } else {
-        // Fall back to subset verification
+      } else if (inputMode === "json") {
+        // Fall back to subset verification (only available with JSON)
         verificationMode = "subset";
         setStatus("Verifying files individually…");
         
@@ -284,11 +353,15 @@ export default function FileVerification() {
         ok,
         verificationMode,
         expected,
-        computed: exactMatch ? computed : null,
-        jsonLeafCount: json.summary?.fileCount ?? json.leaves.length,
+        computed: computed,
+        jsonLeafCount: inputMode === "json" ? (json.summary?.fileCount ?? json.leaves.length) : null,
         selectedCount: pairs.length,
         filteredCount: filtered.length,
-        policyUsed: useJsonPolicy ? "json.folderPolicy" : "no policy",
+        policyUsed: policySource === "json" 
+          ? (policyOverride ? "json.folderPolicy (overridden)" : "json.folderPolicy")
+          : policySource === "manual"
+          ? "manual"
+          : "default",
         filesVerified,
         filesMissing,
         verificationRate,
@@ -393,64 +466,135 @@ export default function FileVerification() {
       <h1 style={{ marginTop: 0 }}>File Verification</h1>
 
       <div style={card}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button 
-            style={button} 
-            onClick={openJson} 
-            disabled={!hasOpen}
-            aria-label="Open merkle tree JSON file for verification"
-          >
-            Open merkle-tree.json
-          </button>
+        {/* Mode Toggle */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="inputMode"
+                value="json"
+                checked={inputMode === "json"}
+                onChange={(e) => handleModeChange("json")}
+              />
+              <span style={{ fontSize: 13 }}>Load JSON file</span>
+            </label>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="inputMode"
+                value="manual"
+                checked={inputMode === "manual"}
+                onChange={(e) => handleModeChange("manual")}
+              />
+              <span style={{ fontSize: 13 }}>Enter root manually</span>
+            </label>
+          </div>
         </div>
 
-        {json && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 12, opacity: 0.8 }}>
-              Loaded: <span style={monoInline}>{jsonName}</span>
+        {/* JSON Mode */}
+        {inputMode === "json" && (
+          <>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button 
+                style={button} 
+                onClick={openJson} 
+                disabled={!hasOpen}
+                aria-label="Open merkle tree JSON file for verification"
+              >
+                Open merkle-tree.json
+              </button>
             </div>
-            <div style={{ marginTop: 8, opacity: 0.8 }}>Root:</div>
-            <div style={mono}>{json.root}</div>
 
-            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
+            {json && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, opacity: 0.8 }}>
+                  Loaded: <span style={monoInline}>{jsonName}</span>
+                </div>
+                <div style={{ marginTop: 8, opacity: 0.8 }}>Root:</div>
+                <div style={mono}>{json.root}</div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Manual Root Mode */}
+        {inputMode === "manual" && (
+          <div>
+            <label style={label}>
+              <span style={labelText}>Merkle Root</span>
               <input
-                type="checkbox"
-                checked={useJsonPolicy}
-                onChange={(e) => setUseJsonPolicy(e.target.checked)}
+                type="text"
+                value={merkleRoot && merkleRoot.startsWith('0x') ? merkleRoot.slice(2) : merkleRoot}
+                onChange={(e) => handleRootInput(e.target.value)}
+                placeholder="Enter 64 hex characters..."
+                aria-label="Merkle root input"
+                aria-invalid={merkleRoot && !isValidMerkleRootFormat(merkleRoot)}
+                style={{
+                  ...input,
+                  border: merkleRoot && !isValidMerkleRootFormat(merkleRoot) ? "1px solid #ff6b6b" : "1px solid #2a2a2a",
+                }}
               />
-              Use JSON folderPolicy (recommended)
+              <div style={hint}>
+                Paste a 32-byte hex root (64 hex characters).
+                {merkleRoot && !isValidMerkleRootFormat(merkleRoot) && (
+                  <span style={{ color: "#ff6b6b", marginLeft: 6 }} aria-live="polite">Invalid root format</span>
+                )}
+              </div>
             </label>
 
-            <div style={hint}>
-              If folder verification mismatches, toggle this OFF to debug what’s in the raw folder.
-            </div>
+            {merkleRoot && isValidMerkleRootFormat(merkleRoot) && (
+              <div style={{ ...hint, marginTop: 12 }}>
+                Note: Manual root input only supports folder verification (exact match). Single file and sub folder verification requires a JSON file.
+              </div>
+            )}
           </div>
         )}
 
         {!hasOpen && (
           <div style={hint}>
-            This browser doesn’t support File System Access API. Use Chrome/Brave/Edge on https or localhost.
+            This browser doesn't support File System Access API. Use Chrome/Brave/Edge on https or localhost.
           </div>
         )}
       </div>
+
+      {/* Folder Policy Card - Always visible */}
+      <FolderPolicy
+        policy={policy}
+        onChange={setPolicy}
+        source={policySource}
+        editable={policySource !== "json" || policyOverride}
+        showSource={true}
+        override={policyOverride}
+        onOverrideChange={setPolicyOverride}
+      />
 
       <div style={card}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
             style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
             onClick={verifyFolder}
-            disabled={!json || !hasDir || isProcessing}
+            disabled={
+              (inputMode === "json" && !json) || 
+              (inputMode === "manual" && (!merkleRoot || !isValidMerkleRootFormat(merkleRoot))) || 
+              !hasDir || 
+              isProcessing
+            }
             aria-label="Verify folder against loaded Merkle tree"
             aria-busy={isProcessing}
           >
             {isProcessing ? "Verifying..." : "Verify Folder"}
           </button>
           <button
-            style={{ ...button, ...(isProcessing ? buttonDisabled : {}) }}
+            style={{ 
+              ...button, 
+              ...((isProcessing || !json || inputMode === "manual") ? buttonDisabled : {}) 
+            }}
             onClick={verifySingleFile}
-            disabled={!json || !hasOpen || isProcessing}
+            disabled={!json || inputMode === "manual" || !hasOpen || isProcessing}
             aria-label="Verify single file against loaded Merkle tree"
             aria-busy={isProcessing}
+            title={inputMode === "manual" ? "Single file and sub folder verification requires a JSON file" : ""}
           >
             {isProcessing ? "Verifying..." : "Verify Single File"}
           </button>
@@ -493,13 +637,13 @@ export default function FileVerification() {
             )}
           </div>
 
-          {folderResult.verificationMode === "exact" && !folderResult.ok && (
+          {folderResult.verificationMode === "exact" && (
             <>
               <div style={{ marginTop: 12, opacity: 0.8 }}>Expected root:</div>
               <div style={mono}>{folderResult.expected}</div>
 
               <div style={{ marginTop: 12, opacity: 0.8 }}>Computed root:</div>
-              <div style={mono}>{folderResult.computed}</div>
+              <div style={mono}>{folderResult.computed || "N/A"}</div>
             </>
           )}
 
@@ -627,6 +771,31 @@ const mono = {
 
 const monoInline = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+};
+
+const label = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  marginBottom: 12,
+};
+
+const labelText = {
+  fontSize: 13,
+  fontWeight: 500,
+  opacity: 0.9,
+};
+
+const input = {
+  padding: "10px 12px",
+  borderRadius: 8,
+  background: "#1a1a1a",
+  border: "1px solid #2a2a2a",
+  color: "#ffffff",
+  fontSize: 14,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
 const barTrack = {

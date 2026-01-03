@@ -20,6 +20,7 @@ export function getContractAddress(chainId) {
     42161: import.meta.env.VITE_CONTRACT_ADDRESS_ARBITRUM_ONE || "0x9aFaF9963Ae4Ed27e8180831e0c38a8C174DCd5E", // Arbitrum One (Mainnet)
     421614: import.meta.env.VITE_CONTRACT_ADDRESS_ARBITRUM_SEPOLIA || null, // Arbitrum Sepolia
     8453: import.meta.env.VITE_CONTRACT_ADDRESS_BASE || "0xA095c28448186ACC0e950A17b96879394f89C5B4", // Base
+    324: import.meta.env.VITE_CONTRACT_ADDRESS_ZKSYNC_ERA || "0xA095c28448186ACC0e950A17b96879394f89C5B4", // ZkSync Era
     31337: import.meta.env.VITE_CONTRACT_ADDRESS_LOCAL || "0x5FbDB2315678afecb367f032d93F642f64180aa3", // Local Anvil
   };
 
@@ -41,6 +42,7 @@ export function getRpcUrl(chainId) {
     42161: import.meta.env.VITE_RPC_URL_ARBITRUM_ONE || "https://arb1.arbitrum.io/rpc",
     421614: import.meta.env.VITE_RPC_URL_ARBITRUM_SEPOLIA || "https://sepolia-rollup.arbitrum.io/rpc",
     8453: import.meta.env.VITE_RPC_URL_BASE || "https://mainnet.base.org",
+    324: import.meta.env.VITE_RPC_URL_ZKSYNC_ERA || "https://mainnet.era.zksync.io",
     31337: import.meta.env.VITE_RPC_URL_LOCAL || "http://127.0.0.1:8545",
   };
 
@@ -53,7 +55,7 @@ export function getRpcUrl(chainId) {
  * @returns {boolean} True if supported
  */
 export function isSupportedNetwork(chainId) {
-  const supportedNetworks = [1, 10, 42161, 421614, 8453, 31337]; // Ethereum Mainnet, Optimism, Arbitrum One, Sepolia, Base, Local
+  const supportedNetworks = [1, 10, 42161, 421614, 8453, 324, 31337]; // Ethereum Mainnet, Optimism, Arbitrum One, Sepolia, Base, ZkSync Era, Local
   return supportedNetworks.includes(chainId);
 }
 

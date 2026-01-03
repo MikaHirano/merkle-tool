@@ -75,6 +75,17 @@ export default function OnChainTimestamping() {
       rpcUrls: ['https://mainnet.base.org'],
       blockExplorerUrls: ['https://basescan.org'],
     },
+    [NETWORK_IDS.ZKSYNC_ERA]: {
+      chainId: `0x${NETWORK_IDS.ZKSYNC_ERA.toString(16)}`,
+      chainName: 'ZkSync Era',
+      nativeCurrency: {
+        name: 'Ether',
+        symbol: 'ETH',
+        decimals: 18,
+      },
+      rpcUrls: ['https://mainnet.era.zksync.io'],
+      blockExplorerUrls: ['https://explorer.zksync.io'],
+    },
   };
 
   /**
@@ -247,6 +258,12 @@ export default function OnChainTimestamping() {
         targetChainId = NETWORK_IDS.BASE;
       } else {
         return; // Already on Base
+      }
+    } else if (chainValue === 'zksync-era') {
+      if (chainId !== NETWORK_IDS.ZKSYNC_ERA) {
+        targetChainId = NETWORK_IDS.ZKSYNC_ERA;
+      } else {
+        return; // Already on ZkSync Era
       }
     } else if (chainValue === 'arbitrum') {
       // If already on Arbitrum Sepolia or Local Anvil, switch to Arbitrum One
@@ -464,6 +481,7 @@ export default function OnChainTimestamping() {
     if (id === NETWORK_IDS.ETHEREUM_MAINNET) return 'ethereum';
     if (id === NETWORK_IDS.OPTIMISM) return 'optimism';
     if (id === NETWORK_IDS.BASE) return 'base';
+    if (id === NETWORK_IDS.ZKSYNC_ERA) return 'zksync-era';
     if (id === NETWORK_IDS.ARBITRUM_ONE || id === NETWORK_IDS.ARBITRUM_SEPOLIA) return 'arbitrum';
     if (id === NETWORK_IDS.LOCAL_ANVIL) return 'arbitrum'; // Local anvil treated as arbitrum
     if (id === NETWORK_IDS.BITCOIN) return 'bitcoin';
@@ -481,6 +499,7 @@ export default function OnChainTimestamping() {
       'optimism': '/icons/optimism.svg',
       'arbitrum': '/icons/arbitrum.svg',
       'base': '/icons/base.svg',
+      'zksync-era': '/icons/zksync.svg',
       'bitcoin': '/icons/bitcoin.svg',
     };
     return iconMap[chainIdentifier] || '/icons/ethereum.svg';
@@ -585,11 +604,13 @@ export default function OnChainTimestamping() {
                   ? (getChainIdentifier(chainId) === 'ethereum' ? 'Ethereum Mainnet' :
                      getChainIdentifier(chainId) === 'optimism' ? (getNetworkName(chainId) || 'Optimism') :
                      getChainIdentifier(chainId) === 'base' ? (getNetworkName(chainId) || 'Base') :
+                     getChainIdentifier(chainId) === 'zksync-era' ? (getNetworkName(chainId) || 'ZkSync Era') :
                      getChainIdentifier(chainId) === 'arbitrum' ? (getNetworkName(chainId) || 'Arbitrum One') :
                      'Select Network')
                   : (selectedChain === 'ethereum' ? 'Ethereum Mainnet' :
                      selectedChain === 'optimism' ? 'Optimism' :
                      selectedChain === 'base' ? 'Base' :
+                     selectedChain === 'zksync-era' ? 'ZkSync Era' :
                      'Arbitrum One'))}
             </span>
             <span style={dropdownArrow}>{dropdownOpen ? '▲' : '▼'}</span>
@@ -629,6 +650,15 @@ export default function OnChainTimestamping() {
                 icon={getChainIcon('base')}
                 isSelected={selectedChain === 'base'}
                 onClick={() => handleNetworkSelect('base')}
+              />
+              <NetworkOption
+                chainId="zksync-era"
+                label={wallet && chainId && chainId === NETWORK_IDS.ZKSYNC_ERA
+                  ? getNetworkName(chainId)
+                  : 'ZkSync Era'}
+                icon={getChainIcon('zksync-era')}
+                isSelected={selectedChain === 'zksync-era'}
+                onClick={() => handleNetworkSelect('zksync-era')}
               />
               <NetworkOption
                 chainId="bitcoin"

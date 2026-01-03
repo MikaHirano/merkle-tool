@@ -1,0 +1,29 @@
+{
+  "schema": "merkle-blockchain-proof@1",
+  "blockchain": "ZkSync Era",
+  "blockchainId": 324,
+  "blockchainExplorer": "ZkSync Era Explorer",
+  "merkleRoot": "0x26dabeb52de311d80617f4bc79efebadb82efb0c505b9c66d5db9f497c888687",
+  "transaction": {
+    "hash": "0xc11e0be66fcd3959d3830ed0239bd6c8e6b9a32d6a956207d302e15b180ffe2f",
+    "blockNumber": 67532477,
+    "blockHash": "0x19c901da2df5ff33b1315ef68b59756d082238c994da5a3a48f95498a6d18033",
+    "chainId": 324,
+    "contractAddress": "0xA095c28448186ACC0e950A17b96879394f89C5B4",
+    "gasUsed": "299303",
+    "timestamp": 1767471835727
+  },
+  "committer": "0x16373F918f415eC486e4784337b9B6e0120F3d26",
+  "metadata": {
+    "fileCount": 47,
+    "totalBytes": 2474660112,
+    "totalBytesHuman": "2.30 GB",
+    "generatedAt": "2026-01-02T18:12:24.352Z",
+    "schema": "merkle-bytes-tree@1",
+    "algorithm": "SHA-256"
+  },
+  "verification": {
+    "contractUrl": "https://explorer.zksync.io/address/0xA095c28448186ACC0e950A17b96879394f89C5B4",
+    "transactionUrl": "https://explorer.zksync.io/tx/0xc11e0be66fcd3959d3830ed0239bd6c8e6b9a32d6a956207d302e15b180ffe2f"
+  }
+}
