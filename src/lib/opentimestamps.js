@@ -332,7 +332,12 @@ export async function stampHash(merkleRootHex, calendarServers = null) {
                              error.name === 'TypeError' && error.message?.includes('fetch');
     
     if (isConnectionError) {
-      const connectionError = new Error('Backend server unavailable. Please ensure the backend is running.');
+      const isProduction = import.meta.env.PROD || import.meta.env.MODE === 'production';
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const errorMessage = isProduction 
+        ? `Backend server unavailable. Please contact support if this issue persists. Backend URL: ${backendUrl}`
+        : 'Backend server unavailable. Please ensure the backend is running.';
+      const connectionError = new Error(errorMessage);
       connectionError.status = 'backend_unavailable';
       throw connectionError;
     }
@@ -594,11 +599,16 @@ export async function upgradeTimestamp(otsFile, calendarServers = null) {
                              error.name === 'TypeError' && error.message?.includes('fetch');
     
     if (isConnectionError) {
+      const isProduction = import.meta.env.PROD || import.meta.env.MODE === 'production';
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const errorMessage = isProduction 
+        ? `Backend server unavailable. Please contact support if this issue persists. Backend URL: ${backendUrl}`
+        : 'Backend server unavailable. Please ensure the backend is running.';
       return {
         otsFile,
         upgraded: false,
         status: 'backend_unavailable',
-        error: 'Backend server unavailable. Please ensure the backend is running.',
+        error: errorMessage,
       };
     }
     

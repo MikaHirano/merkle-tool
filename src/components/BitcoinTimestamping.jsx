@@ -315,7 +315,12 @@ export default function BitcoinTimestamping({ merkleRoot: initialMerkleRoot = ""
       // Check backend health first
       const backendAvailable = await checkBackendHealth();
       if (!backendAvailable) {
-        setError('Backend server is unavailable. Please ensure the backend is running on port 3001.');
+        const isProduction = import.meta.env.PROD || import.meta.env.MODE === 'production';
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const errorMessage = isProduction 
+          ? `Backend server is unavailable. Please contact support if this issue persists. Backend URL: ${backendUrl}`
+          : 'Backend server is unavailable. Please ensure the backend is running on port 3001.';
+        setError(errorMessage);
         setStatus('error');
         statusRef.current = 'error';
         // Pause polling temporarily - will retry on next manual check or component remount
@@ -331,7 +336,12 @@ export default function BitcoinTimestamping({ merkleRoot: initialMerkleRoot = ""
       
       // Handle backend_unavailable status from getTimestampStatus
       if (statusResult.status === 'backend_unavailable') {
-        setError('Backend server is unavailable. Please ensure the backend is running on port 3001.');
+        const isProduction = import.meta.env.PROD || import.meta.env.MODE === 'production';
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const errorMessage = isProduction 
+          ? `Backend server is unavailable. Please contact support if this issue persists. Backend URL: ${backendUrl}`
+          : 'Backend server is unavailable. Please ensure the backend is running on port 3001.';
+        setError(errorMessage);
         setStatus('error');
         statusRef.current = 'error';
         // Pause polling
@@ -448,7 +458,12 @@ export default function BitcoinTimestamping({ merkleRoot: initialMerkleRoot = ""
       if (err.message?.includes('Failed to fetch') || 
           err.message?.includes('ERR_CONNECTION_REFUSED') ||
           err.message?.includes('Backend server unavailable')) {
-        setError('Backend server is unavailable. Please ensure the backend is running on port 3001.');
+        const isProduction = import.meta.env.PROD || import.meta.env.MODE === 'production';
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const errorMessage = isProduction 
+          ? `Backend server is unavailable. Please contact support if this issue persists. Backend URL: ${backendUrl}`
+          : 'Backend server is unavailable. Please ensure the backend is running on port 3001.';
+        setError(errorMessage);
         setStatus('error');
         statusRef.current = 'error';
         // Pause polling
@@ -855,9 +870,14 @@ export default function BitcoinTimestamping({ merkleRoot: initialMerkleRoot = ""
           marginBottom: error.includes('Backend server') ? 12 : 0
         }}>
           {error.includes('Backend server') ? '⚠️ ' : 'ERROR: '}{error}
-          {error.includes('Backend server') && (
+          {error.includes('Backend server') && !import.meta.env.PROD && (
             <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9 }}>
               Run: <code style={{ background: 'rgba(0,0,0,0.2)', padding: '2px 6px', borderRadius: '4px' }}>npm run backend</code>
+            </div>
+          )}
+          {error.includes('Backend server') && import.meta.env.PROD && (
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9 }}>
+              Check that the backend service is running and accessible.
             </div>
           )}
         </div>

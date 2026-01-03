@@ -106,7 +106,7 @@ Requires browsers with File System Access API support:
 8. Download the proof file for future verification
 
 **For Bitcoin (OpenTimestamps):**
-1. **Start the backend server** (required): Run `npm run backend` in a separate terminal
+1. **Backend Server**: In production, the backend runs on Railway.app. For local development, run `npm run backend` in a separate terminal.
 2. Go to the "On-Chain Timestamping" tab
 3. Select "Bitcoin" from the network dropdown (no wallet required)
 4. Load a `merkle-tree.json` file or paste a Merkle root
@@ -120,7 +120,7 @@ Requires browsers with File System Access API support:
 9. **Manual check**: Use "Check Upgrade" button to manually check status
 10. Download the `.ots` proof file for verification
 
-**Note**: Bitcoin timestamping requires a backend server running because the OpenTimestamps library requires Node.js. The backend acts as a proxy between the browser and OpenTimestamps calendar servers.
+**Note**: Bitcoin timestamping requires a backend server because the OpenTimestamps library requires Node.js. In production, this runs on Railway.app. The backend acts as a proxy between the browser and OpenTimestamps calendar servers.
 
 **Contract Addresses:**
 - **Ethereum Mainnet**: [`0xE1DEb3c75b5c32D672ac8287010C231f4C15033b`](https://etherscan.io/address/0xE1DEb3c75b5c32D672ac8287010C15033b)
@@ -167,11 +167,23 @@ npm run lint
 For production deployment, see [PRODUCTION.md](PRODUCTION.md) for detailed instructions.
 
 **Quick Start:**
-1. Set environment variables (see `.env.example`)
-2. Build frontend: `npm run build`
-3. Deploy `dist/` directory to your hosting service
-4. Deploy backend server (see PRODUCTION.md for options)
-5. Configure CORS and environment variables
+1. **Backend Deployment (Railway.app recommended)**:
+   - Connect your GitHub repository to Railway
+   - Set environment variables: `NODE_ENV=production`, `PORT=3001`, `CORS_ORIGIN=your-frontend-url`
+   - Railway will auto-deploy on git push
+   - Get your Railway backend URL (e.g., `https://your-backend.up.railway.app`)
+
+2. **Frontend Deployment (Vercel recommended)**:
+   - Connect your GitHub repository to Vercel
+   - Set environment variable: `VITE_BACKEND_URL=https://your-backend.up.railway.app`
+   - Vercel will auto-deploy on git push
+   - Update Railway `CORS_ORIGIN` to include your Vercel URL
+
+3. **Verify Deployment**:
+   - Test Bitcoin timestamping in production
+   - Check that backend health endpoint responds: `https://your-backend.up.railway.app/api/health`
+
+See [PRODUCTION.md](PRODUCTION.md) for step-by-step Railway and Vercel deployment guide.
 
 **Environment Variables:**
 

@@ -64,7 +64,11 @@ When you click "Create Timestamp on [Blockchain Name]":
 
 #### For Bitcoin (OpenTimestamps)
 
-**Prerequisites**: The backend server must be running (`npm run backend`). Bitcoin timestamping requires a Node.js backend because the OpenTimestamps library cannot run directly in browsers.
+**Prerequisites**: 
+- **Production**: Backend runs on Railway.app (automatically deployed from GitHub)
+- **Local Development**: Backend server must be running (`npm run backend`)
+
+Bitcoin timestamping requires a Node.js backend because the OpenTimestamps library cannot run directly in browsers. In production, the backend is deployed on Railway.app. For local development, you need to run the backend server manually.
 
 When you click "Create Timestamp on Bitcoin":
 
@@ -499,11 +503,11 @@ A: Yes! You can verify timestamps by:
 
 ### Q: Do I need a wallet for Bitcoin timestamping?
 
-A: No! Bitcoin timestamping uses OpenTimestamps calendar servers and doesn't require a wallet connection. However, you **do need to run the backend server** (`npm run backend`) because the OpenTimestamps library requires Node.js and cannot run directly in browsers. Simply select "Bitcoin" from the network dropdown and create your timestamp. The backend server handles communication with OpenTimestamps calendar servers.
+A: No! Bitcoin timestamping uses OpenTimestamps calendar servers and doesn't require a wallet connection. However, you **do need a backend server** because the OpenTimestamps library requires Node.js and cannot run directly in browsers. In production, the backend runs on Railway.app. For local development, run `npm run backend`. Simply select "Bitcoin" from the network dropdown and create your timestamp. The backend server handles communication with OpenTimestamps calendar servers.
 
 ### Q: Why does Bitcoin timestamping require a backend server?
 
-A: The official `opentimestamps` JavaScript library requires Node.js and cannot run in browsers. Additionally, calendar servers may have CORS restrictions. The backend server acts as a proxy, handling all OpenTimestamps operations securely with rate limiting and input validation.
+A: The official `opentimestamps` JavaScript library requires Node.js and cannot run in browsers. Additionally, calendar servers may have CORS restrictions. The backend server acts as a proxy, handling all OpenTimestamps operations securely with rate limiting and input validation. In production, the backend is deployed on Railway.app. For local development, run `npm run backend` in a separate terminal.
 
 ### Q: What are the status states for Bitcoin timestamps?
 

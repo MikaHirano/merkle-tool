@@ -101,6 +101,7 @@ export default function OnChainTimestamping() {
 
   /**
    * Connect to Web3 wallet
+   * Switches to the selected network after connecting
    */
   const connectWallet = async () => {
     if (!window.ethereum) {
@@ -143,6 +144,28 @@ export default function OnChainTimestamping() {
         address,
         chainId: currentChainId
       });
+
+      // After connecting, switch to the selected network if needed
+      if (selectedChain !== 'bitcoin') {
+        // Map selected chain to target chain ID
+        let targetChainId = null;
+        if (selectedChain === 'ethereum') {
+          targetChainId = NETWORK_IDS.ETHEREUM_MAINNET;
+        } else if (selectedChain === 'optimism') {
+          targetChainId = NETWORK_IDS.OPTIMISM;
+        } else if (selectedChain === 'base') {
+          targetChainId = NETWORK_IDS.BASE;
+        } else if (selectedChain === 'zksync-era') {
+          targetChainId = NETWORK_IDS.ZKSYNC_ERA;
+        } else if (selectedChain === 'arbitrum') {
+          targetChainId = NETWORK_IDS.ARBITRUM_ONE;
+        }
+
+        // Switch to target network if not already on it
+        if (targetChainId && currentChainId !== targetChainId) {
+          await switchToNetwork(targetChainId);
+        }
+      }
 
     } catch (err) {
       logError(err, "OnChainTimestamping.connectWallet");
@@ -239,8 +262,10 @@ export default function OnChainTimestamping() {
       return;
     }
 
+    // If wallet is not connected, just update the selection
+    // The wallet will switch to this network when connecting
     if (!wallet) {
-      return; // Can't switch if not connected (for EVM chains)
+      return; // Selection updated, will switch when wallet connects
     }
 
     // Map chain identifier to chain ID
@@ -584,10 +609,10 @@ export default function OnChainTimestamping() {
               ...networkSelect,
               ...networkSelectButton,
               ...(dropdownOpen ? networkSelectButtonOpen : {}),
-              ...((!wallet || switchingNetwork) ? networkSelectButtonDisabled : {})
+              ...(switchingNetwork ? networkSelectButtonDisabled : {})
             }}
-            onClick={() => !switchingNetwork && (wallet || selectedChain === 'bitcoin') && setDropdownOpen(!dropdownOpen)}
-            disabled={(!wallet && selectedChain !== 'bitcoin') || switchingNetwork}
+            onClick={() => !switchingNetwork && setDropdownOpen(!dropdownOpen)}
+            disabled={switchingNetwork}
             aria-label="Select blockchain network"
             aria-expanded={dropdownOpen}
             aria-haspopup="listbox"
@@ -615,7 +640,7 @@ export default function OnChainTimestamping() {
             </span>
             <span style={dropdownArrow}>{dropdownOpen ? '▲' : '▼'}</span>
           </button>
-          {dropdownOpen && (wallet || selectedChain === 'bitcoin') && !switchingNetwork && (
+          {dropdownOpen && !switchingNetwork && (
             <div style={dropdownMenu} role="listbox">
               <NetworkOption
                 chainId="ethereum"

@@ -98,7 +98,32 @@ The backend server (`backend-server.js`) acts as a proxy between the frontend an
        restart: unless-stopped
    ```
 
-3. **Systemd Service**
+3. **Railway.app (Recommended for Easy Deployment)**
+   
+   Railway.app provides automatic deployments from GitHub with minimal configuration:
+   
+   **Setup Steps:**
+   1. Create a Railway account at [railway.app](https://railway.app)
+   2. Create a new project and connect your GitHub repository
+   3. Railway will auto-detect Node.js and create a service
+   4. Configure the service:
+      - **Start Command**: `node backend-server.js`
+      - **Build Command**: Leave empty (Railway auto-detects)
+   5. Set environment variables in Railway dashboard:
+      - `NODE_ENV=production`
+      - `PORT=3001` (optional, Railway may auto-set)
+      - `CORS_ORIGIN=https://your-frontend-domain.com` (your Vercel URL)
+   6. Generate a public domain in Railway Settings → Networking
+   7. Railway will auto-deploy on every git push
+   
+   **Benefits:**
+   - Automatic deployments from GitHub
+   - HTTPS included (no SSL configuration needed)
+   - Built-in monitoring and logs
+   - Easy environment variable management
+   - Free tier available for testing
+
+4. **Systemd Service**
    Create `/etc/systemd/system/opentimestamps-backend.service`:
    ```ini
    [Unit]
@@ -121,14 +146,34 @@ The backend server (`backend-server.js`) acts as a proxy between the frontend an
 
 ## Deployment Checklist
 
-### Frontend
+### Frontend (Vercel Recommended)
+- [ ] Connect GitHub repository to Vercel
+- [ ] Set `VITE_BACKEND_URL` environment variable in Vercel (use HTTPS Railway URL)
+- [ ] Vercel will auto-deploy on git push
+- [ ] Update backend `CORS_ORIGIN` to include your Vercel URL
+- [ ] Test production deployment end-to-end
+
+### Frontend (Other Hosting Services)
 - [ ] Set `VITE_BACKEND_URL` environment variable
 - [ ] Run `npm run build`
-- [ ] Deploy `dist/` directory to your hosting service (Vercel, Netlify, etc.)
+- [ ] Deploy `dist/` directory to your hosting service
 - [ ] Configure CORS on backend if needed
 - [ ] Test production build locally with `npm run preview`
 
 ### Backend (Required for Bitcoin Timestamping)
+
+**For Railway.app Deployment:**
+- [ ] Create Railway project and connect GitHub repository
+- [ ] Set `NODE_ENV=production` in Railway Variables
+- [ ] Set `CORS_ORIGIN` with your frontend domain(s) in Railway Variables
+- [ ] Set `PORT=3001` (optional, Railway may auto-set)
+- [ ] Configure Start Command: `node backend-server.js`
+- [ ] Generate public domain in Railway Settings → Networking
+- [ ] Verify backend health endpoint: `curl https://your-backend.up.railway.app/api/health`
+- [ ] Test Bitcoin timestamping from production frontend
+- [ ] Monitor Railway logs for any errors
+
+**For Self-Hosted Deployment:**
 - [ ] Set `NODE_ENV=production` (REQUIRED for security)
 - [ ] Set `CORS_ORIGIN` with your frontend domain(s) (REQUIRED in production)
 - [ ] Set `PORT` environment variable (optional, defaults to 3001)
