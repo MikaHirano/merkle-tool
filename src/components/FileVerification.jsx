@@ -381,7 +381,9 @@ export default function FileVerification() {
   }
 
   async function verifySingleFile() {
-    if (!json) return;
+    // Require either JSON or valid manual root
+    if (inputMode === "json" && !json) return;
+    if (inputMode === "manual" && (!merkleRoot || !isValidMerkleRootFormat(merkleRoot))) return;
     if (!hasOpen) return;
 
     resetResults();
@@ -391,7 +393,6 @@ export default function FileVerification() {
       setStatus("Choosing file…");
       const [handle] = await window.showOpenFilePicker({ multiple: false });
       const file = await handle.getFile();
-
 
       setStatus("Hashing file locally…");
       
@@ -405,15 +406,35 @@ export default function FileVerification() {
         contentHashBytes = await sha256Stream(file);
       } else {
         // Use regular approach for smaller files
-      const bytes = await readFileWithErrorHandling(file);
+        const bytes = await readFileWithErrorHandling(file);
         contentHashBytes = await sha256Bytes(bytes);
       }
 
-      const enc = new TextEncoder();
-      const contentHashHex = toHex(contentHashBytes).toLowerCase();
-
       const leafHashBytes = await computeLeafHashBytes(contentHashBytes);
       const leafHashHex = toHex(leafHashBytes).toLowerCase();
+
+      // Handle manual mode: direct comparison
+      if (inputMode === "manual") {
+        const normalized = normalizeMerkleRoot(merkleRoot);
+        const expectedRoot = normalized.startsWith("0x") ? normalized.slice(2).toLowerCase() : normalized.toLowerCase();
+        
+        if (leafHashHex === expectedRoot) {
+          setFileResult({ ok: true });
+          setStatus("Done.");
+          return;
+        } else {
+          setFileResult({
+            ok: false,
+            reason: "The file's hash does not match the entered root.",
+          });
+          setStatus("Done.");
+          return;
+        }
+      }
+
+      // Handle JSON mode: Merkle proof verification (existing logic)
+      const enc = new TextEncoder();
+      const contentHashHex = toHex(contentHashBytes).toLowerCase();
 
       // quick filter by content hash
       const candidateIdx = [];
@@ -424,7 +445,7 @@ export default function FileVerification() {
       }
 
       if (candidateIdx.length === 0) {
-        setFileResult({ ok: false, reason: "Not found: this file’s bytes are not present in the committed set." });
+        setFileResult({ ok: false, reason: "Not found: this file's bytes are not present in the committed set." });
         setStatus("Done.");
         return;
       }
@@ -545,7 +566,7 @@ export default function FileVerification() {
 
             {merkleRoot && isValidMerkleRootFormat(merkleRoot) && (
               <div style={{ ...hint, marginTop: 12 }}>
-                Note: Manual root input only supports folder verification (exact match). Single file and sub folder verification requires a JSON file.
+                Note: Manual root input supports folder verification (exact match) and single file verification (for single-file trees). Sub folder verification and single file verification within multi-file merkle trees require a JSON file.
               </div>
             )}
           </div>
@@ -588,13 +609,20 @@ export default function FileVerification() {
           <button
             style={{ 
               ...button, 
-              ...((isProcessing || !json || inputMode === "manual") ? buttonDisabled : {}) 
+              ...((isProcessing || 
+                   (inputMode === "json" && !json) || 
+                   (inputMode === "manual" && (!merkleRoot || !isValidMerkleRootFormat(merkleRoot))) ||
+                   !hasOpen) ? buttonDisabled : {}) 
             }}
             onClick={verifySingleFile}
-            disabled={!json || inputMode === "manual" || !hasOpen || isProcessing}
-            aria-label="Verify single file against loaded Merkle tree"
+            disabled={
+              (inputMode === "json" && !json) || 
+              (inputMode === "manual" && (!merkleRoot || !isValidMerkleRootFormat(merkleRoot))) || 
+              !hasOpen || 
+              isProcessing
+            }
+            aria-label="Verify single file against Merkle root"
             aria-busy={isProcessing}
-            title={inputMode === "manual" ? "Single file and sub folder verification requires a JSON file" : ""}
           >
             {isProcessing ? "Verifying..." : "Verify Single File"}
           </button>
