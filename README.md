@@ -4,7 +4,7 @@ A web-based tool for generating and verifying Merkle trees from files and folder
 
 ## Blockchain Timestamping
 
-Create immutable timestamps of your files on Ethereum, Optimism, Arbitrum, Base, ZkSync Era, and Bitcoin blockchains! This feature supports both Ethereum-based smart contracts and Bitcoin via the [OpenTimestamps](https://opentimestamps.org/) protocol, allowing you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
+Create immutable timestamps of your files on Ethereum, Optimism, Arbitrum, Base, ZkSync Era, and Bitcoin blockchains. This feature supports both Ethereum-based smart contracts and Bitcoin via the [OpenTimestamps](https://opentimestamps.org/) protocol, allowing you to prove that your files existed at a specific point in time. See [TIMESTAMPING.md](TIMESTAMPING.md) for detailed documentation.
 
 ## Features
 
